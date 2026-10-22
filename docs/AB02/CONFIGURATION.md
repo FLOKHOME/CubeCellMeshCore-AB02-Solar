@@ -46,6 +46,24 @@ Nach dem Update auf diese Firmware zeigt `config` einmalig `stored:stale`, bis `
 
 **Ohne `config/repeater.json`** (oder ohne Python) baut die Firmware unverändert mit den eingebauten Vorgaben; der Generator schreibt dann nur einen Stub.
 
+## ADVERT-Intervall
+
+Reihenfolge der Wirksamkeit: **EEPROM-Wert** (aus `loadConfig()`) → **kompilierte Konfiguration** (`advertising.local_interval_minutes`) → **eingebauter Vorgabewert** 5 min. Das Intervall wird beim Start **nicht mehr** überschrieben; die Startmeldung nennt den tatsächlich wirksamen Wert:
+
+```text
+[I] ADV: on every 7200s
+```
+
+```text
+advert interval          -> Int:120m next:61s      (Ist-Wert + Restzeit)
+set advert.interval 120  -> 1-255 Minuten, wird gespeichert
+advert interval 7200     -> 60-15300 Sekunden, wird gespeichert
+```
+
+Gespeichert wird das Intervall in `NodeConfig.advertIntervalMin` (**1 Byte**). Deshalb liegt die dauerhaft speicherbare Obergrenze bei **255 Minuten** (4,25 h); größere Werte werden von den Befehlen abgelehnt (`E:1-255`), statt nach dem nächsten Neustart still gekürzt zu werden. `speichern` erfolgt über `saveConfig()` – jeder spätere `save`-Vorgang schreibt den aktuell wirksamen Wert zurück.
+
+**Hinweis für die Inbetriebnahme:** Nach dem Flashen dieser Firmware einmal `advert interval` prüfen. Vorher galt nach jedem RESET wieder 5 min, und der erste Admin-Login schrieb diesen Wert zusätzlich ins EEPROM.
+
 ## Serielle Konsole
 
 ```cmd

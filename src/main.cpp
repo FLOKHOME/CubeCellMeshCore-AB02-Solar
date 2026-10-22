@@ -775,19 +775,21 @@ static bool dispatchSharedCommand(const char* cmd, CmdCtx& ctx, bool isAdmin) {
     }
     else if (strncmp(cmd, "set advert.interval ", 20) == 0) {
         uint32_t minutes = strtoul(cmd + 20, NULL, 10);
-        if (minutes >= 1 && minutes <= 1440) {
+        // 255 is the largest value NodeConfig.advertIntervalMin can store, so
+        // anything above it would silently change after the next reset.
+        if (minutes >= 1 && minutes <= 255) {
             advertGen.setInterval(minutes * 60000);
             saveConfig();
             CP("int:%lum\n", minutes);
-        } else CP("E:1-1440\n");
+        } else CP("E:1-255\n");
     }
     else if (strncmp(cmd, "advert interval ", 16) == 0) {
         uint32_t interval = strtoul(cmd + 16, NULL, 10);
-        if (interval >= 60 && interval <= 86400) {
+        if (interval >= 60 && interval <= 15300) {      // up to 255 minutes
             advertGen.setInterval(interval * 1000);
             saveConfig();
             CP("int:%lus\n", interval);
-        } else CP("E:60-86400\n");
+        } else CP("E:60-15300\n");
     }
     else if (strcmp(cmd, "advert") == 0) {
         sendAdvert(true); CP("adv sent\n");
@@ -3462,11 +3464,7 @@ void setup() {
 
     // Initialize ADVERT generator with time sync
     advertGen.begin(&nodeIdentity, &timeSync);
-    advertGen.setInterval(ADVERT_INTERVAL_MS);
     advertGen.setEnabled(ADVERT_ENABLED);
-    LOG(TAG_INFO " ADV: %s %lus\n\r",
-        ADVERT_ENABLED ? "on" : "off",
-        ADVERT_INTERVAL_MS / 1000);
 
     // Initialize telemetry
     telemetry.begin(&rxCount, &txCount, &fwdCount, &errCount, &lastRssi, &lastSnr);
@@ -3485,6 +3483,17 @@ void setup() {
     if (applyCompiledUserConfig(false)) {
         LOG(TAG_CONFIG " User config applied\n\r");
     }
+
+    // Effective ADVERT interval, decided last: loadConfig() restored the stored
+    // value and applyCompiledUserConfig() may have applied the compiled-in one.
+    // ADVERT_INTERVAL_MS is only the fallback for a node that has neither.
+    // NOTE: this used to be set unconditionally when the generator was started,
+    // which overwrote the stored interval with the 5 minute default on every
+    // reset and made the boot log print the default instead of the real value.
+    if (advertGen.getInterval() == 0) advertGen.setInterval(ADVERT_INTERVAL_MS);
+    LOG(TAG_INFO " ADV: %s every %lus\n\r",
+        ADVERT_ENABLED ? "on" : "off",
+        advertGen.getInterval() / 1000);
 
     initLed();
     diagInit();
