@@ -2,9 +2,20 @@
 
 Dieses Changelog beschreibt **Entwicklungsstände dieses Community-Forks**, nicht offizielle MeshCore-Releases. Die Originalhistorie von [atomozero/CubeCellMeshCore](https://github.com/atomozero/CubeCellMeshCore) steht in [`docs/UPSTREAM_README.md`](docs/UPSTREAM_README.md) und in der Git-Historie.
 
-## [Unreleased] – 22.10.2026, `feature/oled-diagnostics`
+## [Unreleased] – 22.10.2026, `main` + `fix/eeprom-layout-review`
 
-Firmware-Commit: [`bf9c48b`](https://github.com/FLOKHOME/CubeCellMeshCore-AB02-Solar/commit/bf9c48b) – `Fix OLED debounce and persist extended MeshCore regions`. **Entwicklungszweig, noch nicht nach `main` gemergt; kein freigegebenes stabiles Release.**
+Die OLED-Diagnose und die persistente Regionsspeicherung sind inzwischen in `main` (`52f108d`) enthalten; der frühere Zweig `feature/oled-diagnostics` (`bf9c48b`) ist dort vollständig aufgegangen. Darauf aufbauend korrigiert der Review-Branch **`fix/eeprom-layout-review`** (4 Commits, Tip `5362dad`) zusätzliche Fehler. **Kein freigegebenes stabiles Release; die Review-Korrekturen sind noch nicht auf Hardware getestet.**
+
+### Fixed – Review-Branch `fix/eeprom-layout-review`
+
+- **EEPROM-Layout:** `EEPROM_SIZE` war doppelt definiert (640 in `main.h`, 576 in `Config.h`); die Region-Map schrieb bis Offset 580, wobei die 5. Region Flags und Namensende verlor. Jetzt eine einzige Quelle (`core/StorageLayout.h`) mit `static_assert`- und `#error`-Schutz. (`c9cbde8`)
+- **Mailbox:** Der Mailbox-Block überlappte den Region-Header; ein einziges zwischengespeichertes Paket löschte die Region-Magic, nach RESET waren alle Regionen weg. Mailbox auf 84-Byte-Slots bei Offset 336 verlegt. (`a674a17`)
+- **ADVERT-Intervall:** `setup()` setzte das Intervall nach `loadConfig()` unbedingt auf 5 min zurück und schrieb das ins EEPROM. Reihenfolge korrigiert; der gespeicherte Wert bleibt nach RESET erhalten. (`cc95656`)
+- **Krypto/Stack:** `MACThenDecrypt()` begrenzte die Ausgabe nicht — ein ANON_REQ mit bis zu 145 Byte lief in einen 128-Byte-Puffer über, vor der Authentifizierung erreichbar. `zeroPad()` verschlüsselte bei leerer Eingabe uninitialisierten Stack. (`5362dad`, mit Host-Regressionstest)
+- **Sitzungsverwaltung:** Ein Admin konnte durch wiederholte Gast-Logins aus der Sitzungstabelle verdrängt werden.
+- **Weitere:** `findByName()`-Unterlauf, Mailbox-`load()`-Validierung, Werte-Wrap bei `set tx`/`txdelay` u. a., CayenneLPP-Überlauf, `floodAdvertHrs`-Wrap, unnötiges Re-Broadcast eines eigenen DIRECT-Pakets.
+
+Details und Nachweise: [Review-Fixes](docs/AB02/REVIEW_FIXES.md).
 
 ### Added
 

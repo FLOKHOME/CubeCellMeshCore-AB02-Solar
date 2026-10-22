@@ -4,7 +4,7 @@
 
 Dieser Fork entwickelt einen kostengünstigen MeshCore-kompatiblen **EU868-Repeater** auf Basis des **Heltec CubeCell HTCC-AB02 V1.0** (ASR6502, SX1262) mit bedarfsgesteuerter OLED-Diagnose und dem Ziel eines späteren solarversorgten Outdoor-Betriebs.
 
-**Aktueller Entwicklungsstand:** [`feature/oled-diagnostics`](https://github.com/FLOKHOME/CubeCellMeshCore-AB02-Solar/tree/feature/oled-diagnostics), Firmware-Commit [`bf9c48b`](https://github.com/FLOKHOME/CubeCellMeshCore-AB02-Solar/commit/bf9c48b). Der Branch ist mit GitHub synchronisiert, **aber noch nicht nach `main` übernommen**. `main` bleibt die zuvor getestete Funk-Basis.
+**Aktueller Stand:** `main` (`52f108d`) enthält die OLED-Diagnose und die persistente Regionsspeicherung; die früheren Arbeitszweige `feature/oled-diagnostics` und `docs/project-documentation` sind vollständig darin aufgegangen. Der Review-Branch **[`fix/eeprom-layout-review`](https://github.com/FLOKHOME/CubeCellMeshCore-AB02-Solar/tree/fix/eeprom-layout-review)** (4 Commits) korrigiert EEPROM-Layout, ADVERT-Persistenz und mehrere Pufferfehler — **noch nicht auf Hardware getestet**, Details in [Review-Fixes](docs/AB02/REVIEW_FIXES.md).
 
 ## Projektstatus
 
@@ -19,6 +19,9 @@ Dieser Fork entwickelt einen kostengünstigen MeshCore-kompatiblen **EU868-Repea
 | Identität `DE-NI-HARSUM01` | **Persistenz auf Hardware bestätigt** |
 | Solar-/Akku-Dauerbetrieb | **Noch nicht nachgewiesen**; Panel-Leerlaufspannung im Sonnenschein ca. 6,52 V gemessen |
 | Funkweiterleitung **nach** dem letzten EEPROM-/OLED-Update | **Noch gesondert zu testen** |
+| Zentrale Konfiguration `config/repeater.json` | **Implementiert**; Build verifiziert, Übernahme im EEPROM auf Hardware noch offen |
+| ADVERT-Intervall bleibt nach RESET erhalten | **Korrigiert** in `cc95656`; Hardware-Gegenprobe offen |
+| Regionen überleben einen Store-and-Forward | **Korrigiert** in `a674a17`; Hardware-Gegenprobe offen |
 
 Details und Grenzen: [Feature-Übersicht](FEATURES.md) · [Testbericht](docs/AB02/TEST_REPORT.md) · [Changelog](CHANGELOG.md).
 
@@ -26,10 +29,10 @@ Details und Grenzen: [Feature-Übersicht](FEATURES.md) · [Testbericht](docs/AB0
 
 | Firmwarestand | Flash | RAM | Einordnung |
 | --- | ---: | ---: | --- |
-| `main`, `v0.7.0-ph123` mit Quiet-Logging | 126.712 / 131.072 B (96,7 %) | 8.584 / 16.384 B (52,4 %) | Basis mit nachgewiesenem Funkverkehr |
-| `feature/oled-diagnostics`, **nach Erhöhung auf fünf Regionen, vor dem letzten Persistenz-Fix** | 127.384 / 131.072 B (97,2 %) | 9.648 / 16.384 B (58,9 %) | Build erfolgreich; nachfolgende Persistenzkorrektur auf Hardware getestet |
+| `fix/eeprom-layout-review` **ohne** `config/repeater.json` | 127.472 / 131.072 B (97,3 %) | 9.648 / 16.384 B (58,9 %) | Review-Fixes, ohne eingebaute Konfiguration |
+| `fix/eeprom-layout-review` **mit** `config/repeater.json` | 128.960 / 131.072 B (98,4 %) | 9.624 / 16.384 B (58,7 %) | Review-Fixes + zentrale Konfiguration, Build verifiziert |
 
-**Wichtig:** Diese zweite Größenmessung stammt *vor* dem letzten Patch der seriellen Regionsspeicherung. Die endgültige Größe des Commits `bf9c48b` wurde im Gespräch nicht separat protokolliert; ein frischer Build liefert sie. Ein erfolgreicher Build allein garantiert wegen des CubeCell-Bootloaders noch keinen erfolgreichen Upload.
+**Wichtig:** Beide Werte wurden während der Review-Arbeiten gemessen; die eingebaute Konfiguration kostet rund 1.488 B Flash. Verifiziert ist nur der Build. Wegen des CubeCell-Bootloaders sagt ein erfolgreicher Build noch nichts über einen erfolgreichen Upload oder Funkbetrieb. Der Flash ist mit 98,4 % nahezu voll — neue Funktionen brauchen vorher Platz.
 
 ## Hardware
 
@@ -50,8 +53,8 @@ py -m pip install --user -U platformio
 git clone https://github.com/FLOKHOME/CubeCellMeshCore-AB02-Solar.git
 cd CubeCellMeshCore-AB02-Solar
 
-REM Getesteten Entwicklungszweig auswählen
-git switch feature/oled-diagnostics
+REM Review-Branch mit den Korrekturen auswaehlen (main = Stand ohne Review)
+git switch fix/eeprom-layout-review
 py -m platformio run -e cubecell_board_plus
 ```
 
@@ -85,13 +88,13 @@ Beim ersten Start übernimmt die Firmware die Werte automatisch und speichert si
 }
 ```
 
-- Die Datei wird beim Build von `tools/gen_user_config.py` validiert und in `src/generated/UserConfigData.{h,cpp}` übersetzt — **kein JSON-Parser in der Firmware** (das Image ist mit 98,1 % fast voll).
+- Die Datei wird beim Build von `tools/gen_user_config.py` validiert und in `src/generated/UserConfigData.{h,cpp}` übersetzt — **kein JSON-Parser in der Firmware** (das Image ist mit 98,4 % fast voll).
 - Ungültige Werte brechen den Build mit Klartextmeldung ab (`[userconfig] CHECK FAILED: …`).
 - Übernommen wird nur, wenn sich die Datei geändert hat (Fingerabdruck im EEPROM, `NodeConfig.configHash`). Manuell per Konsole gesetzte Werte bleiben sonst unangetastet.
 - Prüfbefehle: `config` (Status `applied`/`stale`), `config apply` (erzwingt erneutes Anwenden).
 - Ohne `config/repeater.json` baut die Firmware unverändert mit den eingebauten Vorgaben.
 
-Speicherbedarf des Beispiel-Builds mit Konfigurationsdatei: **128.544 / 131.072 B Flash (98,1 %)**, 9.624 B RAM. Details: [Konfiguration, Regionen und EEPROM](docs/AB02/CONFIGURATION.md).
+Speicherbedarf des Beispiel-Builds mit Konfigurationsdatei: **128.960 / 131.072 B Flash (98,4 %)**, 9.624 B RAM. Details: [Konfiguration, Regionen und EEPROM](docs/AB02/CONFIGURATION.md).
 
 ## Tests
 
@@ -142,6 +145,7 @@ Die gemeldete Sendeleistung ist **keine Bestätigung der zulässigen EIRP oder D
 
 ## Dokumentation
 
+- [Review-Fixes (Branch `fix/eeprom-layout-review`)](docs/AB02/REVIEW_FIXES.md)
 - [Features und Teststatus](FEATURES.md)
 - [Changelog](CHANGELOG.md)
 - [Windows-Build / Flash / Recovery](docs/AB02/BUILD_WINDOWS.md)
