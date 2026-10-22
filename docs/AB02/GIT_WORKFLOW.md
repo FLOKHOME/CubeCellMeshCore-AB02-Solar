@@ -1,12 +1,14 @@
 # Git-Workflow für mehrere Windows-Rechner
 
-## Repository und Remotes
+**Stand: 22.10.2026.** Fork: `FLOKHOME/CubeCellMeshCore-AB02-Solar`.
 
-- `origin`: `https://github.com/FLOKHOME/CubeCellMeshCore-AB02-Solar.git` – eigener Fork.
-- `upstream`: `https://github.com/atomozero/CubeCellMeshCore.git` – Originalprojekt.
-- `main`: Referenz der nachgewiesen funktionierenden Funk-Basis.
-- `feature/oled-diagnostics`: OLED-/LED-Entwicklung, anfangs identisch zu `main`.
-- `docs/project-documentation`: Dokumentationsänderungen separat von der Firmware.
+## Branches und Herkunft
+
+- `origin`: eigener Fork auf GitHub.
+- `upstream`: [`atomozero/CubeCellMeshCore`](https://github.com/atomozero/CubeCellMeshCore) (MIT).
+- `main`: funkerprobte Basis `v0.7.0-ph123`, inklusive bereits integrierter Projektdokumentation.
+- `feature/oled-diagnostics`: **OLED-Taster, LED-Abschaltung, fünf Regionen und EEPROM-Persistenz**, auf GitHub gesichert mit Commit `bf9c48b`.
+- `docs/project-documentation`: früherer Dokumentationszweig; dessen Inhalte wurden im Projekt bereits nach `main` übernommen.
 
 ```cmd
 git status -sb
@@ -14,50 +16,28 @@ git remote -v
 git branch -vv
 ```
 
-## Neue Arbeit beginnen
+## Änderungen sicher committen
 
-Vor Branch-Wechsel stets `git status` kontrollieren. Untracked lokale Skripte (`??`) werden durch `git switch` **nicht automatisch gelöscht**, können aber bei Namenskonflikten stören.
+Vor Branchwechsel `git status -sb` prüfen. Nicht versionierte Skripte und Backups (`??`) bleiben lokal, können aber bei Dateikonflikten stören.
 
-```cmd
-git switch main
-git pull --ff-only origin main
-git switch -c feature/name
-```
+Dieses Dokumentationspaket wird **auf `feature/oled-diagnostics`** angewendet. Vor `--apply` bietet das mitgelieferte Python-Skript eine reine Prüfung und eine Schutzkopie; bei unerwartet geänderten Dokumentationsdateien bricht es ab.
 
-Falls der Branch schon existiert, `git switch feature/name` verwenden, nicht nochmals `-c`.
-
-## Dateien gezielt committen
+Anschließend nur die inhaltlich geprüften Dateien hinzufügen:
 
 ```cmd
-git status
-git add src/main.cpp src/main.h
-git diff --cached
-git commit -m "Explain change"
-git push -u origin HEAD
+git add README.md CHANGELOG.md FEATURES.md docs/AB02/BUILD_WINDOWS.md docs/AB02/CONFIGURATION.md docs/AB02/TEST_REPORT.md docs/AB02/ROADMAP.md docs/AB02/HARDWARE_SOLAR.md docs/AB02/COMPATIBILITY.md docs/AB02/GIT_WORKFLOW.md
+git diff --cached --check
+git diff --cached --stat
+git commit -m "Document verified OLED and persistent region features"
+git push origin feature/oled-diagnostics
 ```
 
-**Keine** temporären `.bak-*`-Dateien, `firmware.*`-Buildoutputs, privaten Schlüssel, Passwortdateien, USB-Logs mit personenbezogenen Informationen oder Token-Dateien veröffentlichen. `git add -A` vor dem Commit nur nach bewusstem Audit verwenden.
+**Nicht** `git add .` verwenden, solange lokale Recovery-, Provisionierungs- oder Profildateien nicht auditiert wurden. Keine `.bak`-Dateien, lokalen Flash-Binaries, privaten Schlüssel, Tokens, Passwörter, personenbezogenen Logs oder sensiblen Koordinaten veröffentlichen.
 
-## Pull Request
+## Pull Request und Release
 
-Änderungen auf Feature-Branch pushen, in GitHub **Compare & pull request** wählen und nach Review nach `main` übernehmen. Bei Zweitrechner nach Merge:
+Nach einem neuen Funk-Regressionstest für den aktuellen Firmware-Commit kann ein Pull Request von `feature/oled-diagnostics` nach `main` vorbereitet werden. Erst nach Review und Test ein Release-Tag vergeben. Ein grüner Build und ein funktionierendes OLED allein sind noch **keine vollständige Funk-/Solar-Freigabe**.
 
-```cmd
-git switch main
-git pull --ff-only origin main
-```
+## Git-Identität und Lizenz
 
-## Commit-E-Mail prüfen
-
-Der ursprüngliche Git-Commit wurde mit einer von Windows automatisch ermittelten **geschäftlichen E-Mail-Adresse** erstellt. Bei öffentlichen Repositories können Commit-Adressen dauerhaft sichtbar sein. Für zukünftige Commits eine GitHub-`noreply`-Adresse oder eine bewusst gewählte öffentliche Adresse setzen:
-
-```cmd
-git config --global user.name "Dein Anzeigename"
-git config --global user.email "deine-noreply-adresse"
-```
-
-Die vorhandene Commit-Historie nicht unüberlegt per Force-Push überschreiben; bei Bedarf erst einen kontrollierten Plan zur Änderung der Autorinformationen festlegen.
-
-## Lizenz und Herkunft
-
-Der Fork behält den Upstream-MIT-Lizenztext und die Git-Historie. Lizenznotizen und historische Changelog-Einträge nicht löschen. Quelle der ursprünglichen Dokumentation: `docs/UPSTREAM_README.md`.
+Für öffentliche Commits bewusst eine GitHub-`noreply`-Adresse oder geeignete öffentliche Adresse verwenden. Die MIT-Lizenz und Copyright-Hinweise des Upstream-Projekts nicht entfernen; die ursprüngliche README liegt unter `docs/UPSTREAM_README.md`.

@@ -1,33 +1,24 @@
 # Testbericht – HTCC-AB02
 
-Stand: 22.10.2026. Testwerte stammen aus der praktischen Session am **21.10.2026** und dem reproduzierten Build am **22.10.2026**. Unbestätigte Annahmen sind ausdrücklich gekennzeichnet.
+**Stand: 22.10.2026.** Die Testergebnisse stammen aus mehreren Entwicklungsständen. **Ein älterer erfolgreicher Funk-Test ist kein Nachweis für einen neueren Commit.**
 
-## Plattform
+## Hardware und Testumgebung
 
-- Heltec CubeCell **HTCC-AB02 V1.0**, ASR6502, SX1262, EU868.
-- Windows-CMD; PlatformIO Core **6.2.0** auf erstem System; USB-UART via CP210x, ursprünglich `COM9`.
-- Funkparameter im Startlog: **869.618 MHz / BW 62.5 kHz / SF8 / CR8**, gemeldete Ausgangsleistung **21 dBm**.
-- Testclient **Seeed Wio Tracker L1 Pro**, Steuerung über **KiekR**.
-- Firmwarebasis `CubeCellMeshCore v0.7.0` von `atomozero`.
+- Heltec CubeCell **HTCC-AB02 V1.0**, ASR6502/SX1262, SH1107-OLED, EU868.
+- Windows CMD, PlatformIO Core **6.2.0** im ursprünglichen Test; spätere Tests am selben Projekt auf Windows.
+- COM-Port wechselte zwischen Testrechnern (u. a. COM9 und COM3); angegebenen Port immer verifizieren.
+- Funkparameter laut älterem Log: **869.618 MHz**, BW **62.5 kHz**, **SF8**, **CR8**, gemeldete Ausgangsleistung **21 dBm**.
+- Gegenstelle: **Seeed Wio Tracker L1 Pro** über KiekR.
 
-## Basisbetrieb (Upstream 0.7.0 mit AB02-Boardkonfiguration)
+## Basisfunk: `v0.7.0-ph123` (vor OLED-/Regionspatch)
 
-- Build: **130.536 B Flash / 8.584 B RAM**.
-- `SX1262 init` und `[S] Ready` nach Boot.
-- Paketempfang und Forwarding im Log: `RX:1 TX:1 FWD:1`.
-- Repeater-ADVERT via UART (`advert`) wurde gesendet und in KiekR erkannt.
-- Nach anfänglichem Timeout gelang ein direkter Ping: **RTT 667 ms**, SNR **Up +13,0 dB / Down +12,0 dB**.
-- `Bad pkt`-Meldungen wurden beobachtet, aber nicht abschließend einer Ursache zugeordnet.
+- Ursprungsversion mit AB02-Unterstützung: **130.536 B Flash / 8.584 B RAM**.
+- SX1262-Initialisierung, `RX`, `TX` und `FWD` beobachtet; Repeater wurde von KiekR erkannt.
+- Ping über KiekR: **RTT 667 ms**; gemessene SNR-Werte zunächst Up **+13,0 dB** / Down **+12,0 dB**, später Up **+11,7 dB** / Down **+13,0 dB**.
+- Nach PathHash-v3- und Quiet-Logging-Patch: Build **126.712 B Flash / 8.584 B RAM**, Upload/Boot erfolgreich.
+- Eine frühere 130.784-B-Version schlug beim Flashen mit `Checksum does not verify! Aborting.` fehl.
 
-## Modifikation PathHash 1/2/3 Byte
-
-- Patch v3: Paketdecoder/Encoder, Forwarding, Schleifenerkennung und Airtime-Berechnung angepasst.
-- Erstes Build: **130.784 B Flash**; Upload meldete nach 100 %: **`Checksum does not verify! Aborting.`**
-- Danach Quiet-Logging: **126.712 B Flash / 8.584 B RAM**, Upload und Boot erfolgreich.
-- Neue Kennung: `v0.7.0-ph123`.
-- KiekR-Ping erneut erfolgreich: **RTT 667 ms, Up +11,7 dB / Down +13,0 dB**.
-
-### Statistik während eines Laufs
+### Zähler aus einem Basislauf
 
 | Uptime (s) | RX | TX | FWD | Fehler `E` | Queue `Q` |
 | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -35,48 +26,61 @@ Stand: 22.10.2026. Testwerte stammen aus der praktischen Session am **21.10.2026
 | 247 | 16 | 16 | 16 | 0 | 0 |
 | 294 | 19 | 18 | 19 | 0 | 1 |
 
-Gesamtstatistik bei letzter Abfrage: `Boots:5 Up:1507s RX:61 TX:58 FWD:46`. Das ist ein **kurzer Feldtest**; keine 24h-Stabilitätsmessung.
+Die Zähler zeigen nur einen **kurzen** Praxistest. `FWD` beweist die interne Bearbeitung/Weiterleitung, aber nicht die erfolgreiche Zustellung am Zielgerät. Ein gezielter End-to-End-Nachweis mit echten 2- und 3-Byte-Mehrhop-Pfaden steht aus.
 
-Ein Zähler `FWD` dokumentiert, dass der Repeater ein Paket zur Weiterleitung verarbeitet/eingeplant hat. Er beweist **nicht**, dass ein entferntes Endgerät dieses Paket erhalten hat. `E:0` in diesem Lauf heißt nicht, dass künftig keine inkompatiblen Pakete auftreten.
+## Zeitübernahme
 
-## Zeit-Synchronisierung
+- `time <Unix-Zeit>` setzte die Uhr im Basisstand erfolgreich.
+- Nach RESET zunächst `T:nosync`; ein **Zero-Hop-Advert** von KiekR/Wio Tracker L1 Pro führte zu `T:sync`.
+- Reproduzierbarkeit über viele Neustarts wurde nicht geprüft.
 
-- Manuell per `time <Unix-Zeit>`: `Time set: ...`, danach `status` mit `T:sync` und fortlaufendem `time`.
-- Nach Neustart `T:nosync`; anschließend **Zero-Hop-Advert** auf dem Wio Tracker L1 Pro in KiekR ausgelöst.
-- CubeCell wechselte nachweislich wieder auf `T:sync`.
-- Wiederholbarkeit über viele Neustarts und Zeitquellen noch nicht getestet.
+## OLED und Taster – aktueller Entwicklungszweig
 
-## Diagnose-Sleep
+**Quellstand:** [`feature/oled-diagnostics`](https://github.com/FLOKHOME/CubeCellMeshCore-AB02-Solar/tree/feature/oled-diagnostics), Commit [`bf9c48b`](https://github.com/FLOKHOME/CubeCellMeshCore-AB02-Solar/commit/bf9c48b).
 
-- Anfangs nahm UART nach einiger Laufzeit keine Befehle an.
-- `sleep off` direkt nach Reset ergab `sleep:off` und gespeicherte Konfiguration.
-- Danach war die serielle Konsole über mindestens 294 Sekunden erreichbar.
-- Aussage zum Stromverbrauch bei `sleep off` ist **noch nicht** durch Messung gedeckt.
+**Auf Hardware bestätigt:**
 
-## OLED-Experimente – aktueller Kenntnisstand
+- OLED **SH1107** wird mittels Software-I²C bei USER-Tasterdruck aktiviert.
+- Anzeige schaltet nach ca. **10 s** wieder ab.
+- Verbesserte Tasterentprellung funktionierte im Test; keine ungewollte Aktivierung mehr beobachtet.
+- RGB-/NeoPixel-LED blieb im getesteten Firmwarestand **aus**.
 
-1. Heltec-DISPLAY-Bibliothek: Linker meldete `region 'rom' overflowed by 0 bytes`.
-2. TinyOLED mit `Wire.h`: ebenfalls zu groß.
-3. Soft-I²C: Build **128.120 B Flash / 9.624 B RAM**, OLED wurde durch USER sichtbar aktiviert; zunächst kein Timeout.
-4. Früher Timeout-Fix: Regression, OLED reagierte nicht mehr; RGB-LED weiterhin rot/violett aktiv.
-5. **Aktualisierte Nutzerbeobachtung vom 22.10.: OLED schaltet nun nach ca. 10 Sekunden aus.** Der exakte dazugehörige Quellstand ist auf dem neuen Windows-PC **nicht vorhanden bzw. nicht wiederhergestellt**. Die RGB-LED bleibt aktiv.
+**Nicht gemessen:** absolute Stromaufnahme, Trennung der OLED-Versorgung, Wake-up aus jedem Sleep-Zustand, Verhalten im Dauerbetrieb und Einfluss auf Paketverluste.
 
-Keinen dieser OLED-Stände ohne Abgleich des tatsächlichen Sourcecodes als freigegebenen Branch/Release deklarieren.
+Frühere OLED-Fehlversuche (Heltec-Library/TinyOLED-Speicherüberschreitung, fehlerhafter Timeout) sind im [Changelog](../../CHANGELOG.md) als **historisch** dokumentiert, nicht als aktuelle Defekte.
 
-## Zweitrechner / Reproduzierbarkeit
+## Regionen – aktueller Entwicklungszweig
 
-Am **22.10.2026** wurde die Funk-Basis aus Upstream-Clone plus PathHash-v3- und Quiet-Logging-Patch auf anderem Windows-Rechner erfolgreich gebaut:
+Ursprünglich war `REGION_MAX_ENTRIES=4`; eine fünfte benannte Region lieferte `ERR`. Danach:
+
+- `REGION_MAX_ENTRIES=5` und `EEPROM_SIZE=640` implementiert.
+- Firmware nach Kapazitätserweiterung kompiliert mit **127.384 / 131.072 B Flash** und **9.648 / 16.384 B RAM**, Status `SUCCESS`.
+- **Achtung:** Diese Größen stammen **vor** der letzten Korrektur der Regionsspeicherung.
+- Der Repeater startete mit Firmwarekennung `v0.7.0-ph123-oled` und gespeichertem Namen **`DE-NI-HARSUM01`**.
+- `region put de`, `region put de-nord`, `region put de-mitte`, `region put de-west` und `region put de-ni` meldeten jeweils `OK`.
+- `region` zeigte:
 
 ```text
-RAM:   52.4% (8584 / 16384 B)
-Flash: 96.7% (126712 / 131072 B)
+*:A
+de:A
+de-nord:A
+de-mitte:A
+de-west:A
+de-ni:A
 ```
 
-Der so erzeugte Sourcecode wurde in Git-Commit **`99e369f`** ins Fork-Repository auf `main` hochgeladen. Reproduzierte **Buildwerte** sind kein automatischer Binär-Hash-Nachweis.
+**Persistenzfehler und Behebung:** Zunächst antwortete die Firmware auf `region save` mit `Unknown`; ein normales `save` führte nach RESET nur zu `*:A`. Nach Korrektur der Befehlsverarbeitung und EEPROM-Speicherung funktionierte **`region save`**. Der Anwender bestätigte, dass **alle Regionen nach RESET erhalten blieben**. Der Name blieb ebenfalls erhalten.
 
-## Noch fehlende Nachweise
+Das ist ein Hardware-Nachweis für **diese fünf flachen Regionen**, nicht für Eltern-Kind-Hierarchien oder zusätzliche Regionseinträge.
 
-- Echte 2-/3-Byte-Pfadrouten über mehrere MeshCore-Knoten mit verifizierter Zustellung.
-- Längere Laufzeit, Resetverhalten, Schleifenerkennung, Überlast und Deduplizierung.
-- OLED + LED-Zustand direkt aus einem gesicherten Commit nachvollziehen und auf derselben Hardware testen.
-- Batteriespannung/-strom, Sleep-Strom, Energiebilanz, Frost-Ladeabschaltung und wasserdichter Solar-Aufbau.
+## Weitere Hardwarebeobachtung: Solarpanel
+
+Für das vorhandene Panel (ungefähr **8 × 11 cm**) wurde im Sonnenlicht eine **Leerlaufspannung von ca. 6,52 V** gemessen. Das ist **kein** Nachweis für Strom, Ladeleistung oder Eignung für den direkten Anschluss. Akku- und Langzeittest fehlen.
+
+## Noch offene Abnahmen
+
+1. **Nach diesem Commit**: KiekR-Ping, LoRa-RX/TX/Forwarding und Fehlerzähler erneut prüfen.
+2. Mehrhop-End-to-End mit 2-/3-Byte-Pfad-Hashes inklusive Zustellung am Zielgerät.
+3. Sleep-/OLED-/LED-Stromaufnahme an der Batterie und Aufweckverhalten messen.
+4. 24h+-Stabilität, Restart nach Unterspannung, Solarleistung, sichere Ladeabschaltung bei Frost und Wetterschutz testen.
+5. Reale EIRP, Duty-Cycle und anwendbare Regeln vor öffentlichem Dauerbetrieb überprüfen.

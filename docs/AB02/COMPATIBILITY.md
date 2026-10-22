@@ -1,10 +1,10 @@
 # Protokollkompatibilität und Grenzen
 
-## Ausgangslage
+**Stand: 22.10.2026.** Der Fork basiert auf **`atomozero/CubeCellMeshCore v0.7.0`**, nicht auf der vollständigen offiziellen MeshCore-1.x-Quellbasis. Versionsnummern sind **nicht** direkt vergleichbar.
 
-Das Projekt basiert auf `atomozero/CubeCellMeshCore v0.7.0`, **nicht** auf der vollständigen offiziellen MeshCore-1.18-Quellbasis. Die Versionsnummern sind nicht unmittelbar vergleichbar.
+## Variable MeshCore-Pfadkennungen
 
-Die ursprüngliche Paketinterpretation behandelte das Feld `pathLen` wie eine reine Bytezahl. Neuere MeshCore-Pakete verwenden darin die **Pfad-Hash-Breite** und die **Hop-Anzahl**. Der Fork führt folgende Interpretation ein:
+Der Fork interpretiert den kodierten Pfad-Header wie folgt:
 
 ```cpp
 hashSize = (pathLen >> 6) + 1;   // 1, 2 oder 3 Byte unterstützt
@@ -12,27 +12,27 @@ hopCount = pathLen & 0x3F;
 pathBytes = hopCount * hashSize;
 ```
 
-Die reservierte Breite 4 Byte wird abgewiesen. Der Patch verändert darüber hinaus:
+Die reservierte Breite 4 Byte wird abgewiesen. Die Anpassungen betreffen Paketlängen, Serialisierung/Deserialisierung, komplettes Hash-Präfix beim Flooding, Peeling eines Hop-Hashes beim Direct-Routing und die Loop-Detection.
 
-- Serialisierung/Deserialisierung und Länge auf dem Funkkanal.
-- Anhängen des eigenen vollständigen Hash-Präfixes im Flood-Modus.
-- Entfernen eines kompletten Hop-Hashs beim Direct-Routing.
-- Schleifenerkennung anhand ganzer Hashs statt beliebiger Einzelbytes.
-- Einige Airtime-/Pfadlängen-Berechnungen.
+**Auf früherem Basisstand geprüft:** Boot, LoRa RX/TX/Forwarding, Sichtbarkeit in KiekR, direkter Ping (667 ms). **Nicht gezielt geprüft:** korrekte End-to-End-Zustellung über weitere Hops mit realen 2- und 3-Byte-Pfad-Hashes. Beobachtete `Bad pkt`-Meldungen haben keine abschließend bestätigte Ursache.
 
-## Wichtig: implementiert ist nicht gleich nachgewiesen
+## Regionen und Flood-Entscheidung
 
-- **Getestet:** Firmware baut und startet, empfängt und sendet; KiekR sieht Node und beantwortet Zero-Hop-Ping.
-- **Noch nicht gezielt getestet:** Ein echtes 2-Byte- bzw. 3-Byte-Routing-Paket wird vom CubeCell über mindestens einen weiteren Hop korrekt zugestellt und bestätigt.
-- Path-/TRACE-Behandlung und Kompatibilität zu beliebigen neueren Protokollfeatures wurden noch nicht vollständig geprüft.
-- Früher beobachtete `Bad pkt`-Meldungen könnten verschiedene Ursachen haben. Es ist nicht nachgewiesen, dass sie sämtlich durch Mehrbyte-Hash-Unterstützung verschwinden.
+Der Entwicklungsbranch `feature/oled-diagnostics` unterstützt **fünf benannte, flache Regions-Einträge** und eine separat gespeicherte Wildcard. Im praktischen Test wurden `*`, `de`, `de-nord`, `de-mitte`, `de-west` und `de-ni` mit Flood-Flag `A` aktiviert und mit `region save` nach RESET persistent nachgewiesen.
 
-## Vorschlag für reproduzierbare Protokolltests
+- `region put NAME` legt einen flachen Eintrag an; eine **Parent-Child-Hierarchie** existiert in dieser Implementation **nicht**.
+- Namen beeinflussen die daraus abgeleiteten Region-Keys; im EEPROM werden maximal **11 ASCII-Bytes** je Name dauerhaft gespeichert.
+- Der zusätzliche Regionsspeicher beansprucht EEPROM-Adresse **512–580** bei einer Gesamtreservierung von **640 Bytes**.
+- Der direkte Test der **aktuellen** Version beim Forwarding über mehrere unterschiedliche Regionen steht noch aus.
 
-1. Zwei oder mehr separate MeshCore-Geräte neben dem CubeCell vorsehen.
-2. Aktuellen Firmwarestand, konkrete LoRa-Einstellungen, Path-Hash-Breite, Route und Hopfolge dokumentieren.
-3. Route mit 1-, dann 2-, dann 3-Byte-Pfaden testen und Zustellung **am Zielgerät** bestätigen.
-4. Negative Fälle: falsche Route, zu langer Pfad, reservierte Kodierung, Schleifen, Duplikate.
-5. `stats` und `lifetime` vor/nach jedem Test protokollieren; Seriennummern, private Schlüssel, Standortkoordinaten und Tokens aus öffentlichen Logs entfernen.
+Siehe [Konfiguration](CONFIGURATION.md) und [Featurestatus](../../FEATURES.md).
 
-Erst nach solchen Tests sollte ein konkretes Kompatibilitätsversprechen abgegeben werden.
+## Reproduzierbare Protokolltests
+
+1. Ein CubeCell und mindestens zwei voneinander unabhängige MeshCore-Geräte verwenden.
+2. Exakten Commit, Radioeinstellungen, Hash-Breite, Hop-Reihenfolge und Firmwarestände protokollieren.
+3. Echte Routen mit 1-, 2- und 3-Byte-Pfad-Hashes testen; Zustellung **am Zielgerät** bestätigen.
+4. Negative Fälle testen: falsche Route, zu langer Pfad, reservierte Kodierung, Schleifen, Duplikate, unerlaubte Regionscodes.
+5. `stats` und `lifetime` vor und nach jedem Test notieren, ohne private Schlüssel, Tokens oder exakte Standortdaten öffentlich zu machen.
+
+Erst danach belastbare Aussagen zur Mehrhop-Interoperabilität veröffentlichen.

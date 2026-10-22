@@ -19,7 +19,7 @@
 #define MC_MAX_SEEN_NODES       16
 
 // LED signaling - must be defined here for both main.cpp and globals.cpp
-#define MC_SIGNAL_NEOPIXEL      // Use NeoPixel for status
+//#define MC_SIGNAL_NEOPIXEL     // Disabled: OLED owns Vext; no LED activity
 //#define MC_SIGNAL_GPIO13      // Use GPIO13 LED (HTCC-AB02A)
 
 // Power saving defaults

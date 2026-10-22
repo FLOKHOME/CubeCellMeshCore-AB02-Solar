@@ -1,93 +1,120 @@
 # CubeCellMeshCore – HTCC-AB02 Solar Repeater
 
-> **Community-Fork / experimentell.** Diese Firmware ist **nicht** die offizielle MeshCore-Firmware und auch kein vollständiger Port von MeshCore 1.18. Bisher bestätigt sind Betrieb, Funkverkehr und Fern-Ping mit einem **Heltec CubeCell HTCC-AB02 V1.0**. Gezielte 2-/3-Byte-Multihop-Tests und ein sicherer Solar-Dauerbetrieb stehen noch aus.
+> **Experimenteller Community-Fork**, keine offizielle MeshCore-Firmware und kein vollständiger Port der offiziellen MeshCore-1.x-Firmware. Grundlage ist [atomozero/CubeCellMeshCore](https://github.com/atomozero/CubeCellMeshCore) v0.7.0 (MIT). Stand der Projektdokumentation: **22.10.2026**.
 
-Dieses Repository ist ein Fork von **[atomozero/CubeCellMeshCore](https://github.com/atomozero/CubeCellMeshCore)**. Es dokumentiert die Weiterentwicklung für das **HTCC-AB02 (ASR6502/SX1262, EU868)** mit erweiterten MeshCore-Pfadkennungen und dem Ziel, einen möglichst günstigen Solar-Repeater aus vorhandenen Bauteilen zu bauen.
+Dieser Fork entwickelt einen kostengünstigen MeshCore-kompatiblen **EU868-Repeater** auf Basis des **Heltec CubeCell HTCC-AB02 V1.0** (ASR6502, SX1262) mit bedarfsgesteuerter OLED-Diagnose und dem Ziel eines späteren solarversorgten Outdoor-Betriebs.
 
-## Status (22.10.2026)
+**Aktueller Entwicklungsstand:** [`feature/oled-diagnostics`](https://github.com/FLOKHOME/CubeCellMeshCore-AB02-Solar/tree/feature/oled-diagnostics), Firmware-Commit [`bf9c48b`](https://github.com/FLOKHOME/CubeCellMeshCore-AB02-Solar/commit/bf9c48b). Der Branch ist mit GitHub synchronisiert, **aber noch nicht nach `main` übernommen**. `main` bleibt die zuvor getestete Funk-Basis.
 
-| Bereich | Stand |
+## Projektstatus
+
+| Funktion | Status / Nachweis |
 | --- | --- |
-| Repeater auf HTCC-AB02, LoRa RX/TX/Forward | **Auf Hardware getestet** |
-| MeshCore-Erkennung und Ping mit KiekR | **Auf Hardware getestet** (RTT 667 ms) |
-| Automatischer Clock-Sync über Zero-Hop-Advert | **Auf Hardware beobachtet** |
-| Erweiterte 1-/2-/3-Byte-Pfadkennungen | **Implementiert, Build und Basisfunk getestet** – gezielter Multihop-Nachweis fehlt |
-| OLED auf USER, Abschalten nach ca. 10 s | **Auf früherem Entwicklungsgerät bestätigt**, Quellstand **noch nicht** im aktuellen `main`-Branch |
-| RGB-Status-LED | **Noch aktiv**; Abschaltung offen |
-| Solarpanel, Akkus, Langzeitbetrieb | **Noch nicht elektrisch erprobt** |
+| Basisrepeater: LoRa-Empfang, Senden, Weiterleitung, KiekR-Ping | **Auf Hardware getestet**, auf Basis `v0.7.0-ph123` vor den jüngsten OLED-/EEPROM-Änderungen |
+| Variable MeshCore-Pfad-Hashes (1, 2, 3 Byte) | **Implementiert**, Basisfunk getestet; gezielter Mehrhop-End-to-End-Nachweis fehlt |
+| SH1107-OLED über USER-Taster | **Auf Hardware getestet**, reagiert auf Tastendruck und schaltet nach ca. 10 s wieder ab |
+| OLED-Tasterentprellung | **Auf Hardware bestätigt**; keine unbeabsichtigten OLED-Aktivierungen im Test |
+| RGB-/NeoPixel-Status-LED | **Im getesteten Entwicklungsstand deaktiviert** |
+| Regionen `*`, `de`, `de-nord`, `de-mitte`, `de-west`, `de-ni` | **Auf Hardware angelegt und nach RESET wieder aus EEPROM geladen** |
+| Identität `DE-NI-HARSUM01` | **Persistenz auf Hardware bestätigt** |
+| Solar-/Akku-Dauerbetrieb | **Noch nicht nachgewiesen**; Panel-Leerlaufspannung im Sonnenschein ca. 6,52 V gemessen |
+| Funkweiterleitung **nach** dem letzten EEPROM-/OLED-Update | **Noch gesondert zu testen** |
 
-### Nachweislich reproduzierbarer Basis-Build (`main`)
+Details und Grenzen: [Feature-Übersicht](FEATURES.md) · [Testbericht](docs/AB02/TEST_REPORT.md) · [Changelog](CHANGELOG.md).
 
-- Firmwarekennung: `CubeCellMeshCore v0.7.0-ph123 EU868`.
-- Board-ID: `cubecell_board_plus`.
-- Build: **126.712 / 131.072 Byte Flash (96,7 %)** und **8.584 / 16.384 Byte RAM (52,4 %)**.
-- Das Build-Ergebnis wurde am 22.10.2026 auf einem zweiten Windows-PC **bytegenau für RAM/Flash reproduziert**.
-- Commit der ursprünglichen AB02-Anpassung im Fork: `99e369f`.
-- Ein erfolgreicher Build belegt noch keine vollständige Funk- oder Protokollkompatibilität.
+## Entwicklungszweige und Speicherbedarf
 
-## Schnellstart – Windows CMD
+| Firmwarestand | Flash | RAM | Einordnung |
+| --- | ---: | ---: | --- |
+| `main`, `v0.7.0-ph123` mit Quiet-Logging | 126.712 / 131.072 B (96,7 %) | 8.584 / 16.384 B (52,4 %) | Basis mit nachgewiesenem Funkverkehr |
+| `feature/oled-diagnostics`, **nach Erhöhung auf fünf Regionen, vor dem letzten Persistenz-Fix** | 127.384 / 131.072 B (97,2 %) | 9.648 / 16.384 B (58,9 %) | Build erfolgreich; nachfolgende Persistenzkorrektur auf Hardware getestet |
 
-Benötigt werden **Git**, **Python 3** und **PlatformIO Core**, außerdem vor Funkbetrieb eine geeignete **868-MHz-Antenne**.
+**Wichtig:** Diese zweite Größenmessung stammt *vor* dem letzten Patch der seriellen Regionsspeicherung. Die endgültige Größe des Commits `bf9c48b` wurde im Gespräch nicht separat protokolliert; ein frischer Build liefert sie. Ein erfolgreicher Build allein garantiert wegen des CubeCell-Bootloaders noch keinen erfolgreichen Upload.
 
-```cmd
-py --version
-py -m platformio --version
-git --version
-git clone https://github.com/FLOKHOME/CubeCellMeshCore-AB02-Solar.git
-cd CubeCellMeshCore-AB02-Solar
-py -m platformio run -e cubecell_board_plus
-```
+## Hardware
 
-Falls PlatformIO fehlt:
+- Heltec **HTCC-AB02 V1.0** (Board-ID `cubecell_board_plus`), ASR6502 / SX1262, 868-MHz-Antenne.
+- Integriertes **SH1107-OLED** mit Software-I²C; Anzeige nur auf Anforderung via USER-Taster, automatisches Abschalten nach etwa 10 Sekunden.
+- RGB-LED/NeoPixel im getesteten Stand abgeschaltet.
+- Geplanter Solarbetrieb mit vorhandenem Panel und 18650-Zelle(n); **keine freigegebene Verschaltung oder Frost-Ladeabschaltung**.
+
+[Hardware und Solarplanung](docs/AB02/HARDWARE_SOLAR.md).
+
+## Bauen und flashen (Windows CMD)
+
+Git, Python 3 und PlatformIO Core werden benötigt. **Vor Funkbetrieb eine geeignete Antenne anschließen.**
 
 ```cmd
 py -m pip install --user -U platformio
+
+git clone https://github.com/FLOKHOME/CubeCellMeshCore-AB02-Solar.git
+cd CubeCellMeshCore-AB02-Solar
+
+REM Getesteten Entwicklungszweig auswählen
+git switch feature/oled-diagnostics
+py -m platformio run -e cubecell_board_plus
 ```
 
-Nur nach erfolgreichem Build und Prüfung des richtigen Boards und COM-Ports flashen:
+Bei erfolgreichem Build den tatsächlichen seriellen Port ermitteln und die Firmware bewusst hochladen (hier nur ein **Beispielport**):
 
 ```cmd
 py -m platformio device list
-py -m platformio run -e cubecell_board_plus -t upload --upload-port COM9
-py -m platformio device monitor --port COM9 --baud 115200 --echo
+py -m platformio run -e cubecell_board_plus -t upload --upload-port COM3
+py -m platformio device monitor --port COM3 --baud 115200 --echo
 ```
 
-`COM9` ist nur der damalige Testport. Im eigenen System den tatsächlich angezeigten Port einsetzen. **Nicht das Upstream-Projekt erneut patchen, wenn du bereits diesen Fork klonst:** Die AB02-Änderungen sind in `main` enthalten.
+Der Fork enthält die PathHash-/Quiet-Logging-Anpassungen bereits: **Historische Patch-Skripte nicht erneut anwenden.** Siehe [Windows-Build, Flash und Recovery](docs/AB02/BUILD_WINDOWS.md).
 
-Detaillierte Anleitung: [Windows-Build und Recovery](docs/AB02/BUILD_WINDOWS.md).
+## Serielle Regionskonfiguration
 
-## Verifizierte Tests
+Die aktuelle CubeCell-Implementierung verwaltet eine separat vorhandene Wildcard und **fünf benannte Regionen**. Die Einträge sind **flach**: Ein vermeintlicher Parent-Parameter aus einem JSON-Profil wird von dieser Firmware **nicht als Regionshierarchie interpretiert**.
 
-- KiekR erkennt den Repeater als MeshCore-Knoten.
-- Erfolgreicher direkter Ping: **RTT 667 ms**, gemessene SNR-Paare **+13/+12 dB** und später **+11,7/+13 dB** (Up/Down).
-- Nach 294 Sekunden Laufzeit im Test: **RX 19, TX 18, FWD 19, Fehler 0**, Boot-Zähler unverändert.
-- Ein **Zero-Hop-Advert** vom Wio Tracker L1 Pro in KiekR wechselte die Statusanzeige von `T:nosync` zu `T:sync`.
-- **Nicht** daraus ableiten: vollständiger End-to-End-Nachweis für Mehrbyte-Pfade, Langzeitstabilität, wetterfesten Betrieb oder regulatorische Konformität.
+```text
+get name
+region
+region put de
+region put de-nord
+region put de-mitte
+region put de-west
+region put de-ni
+region
+region save
+```
 
-[Messprotokoll und Fehlversuche](docs/AB02/TEST_REPORT.md)
+Erfolgreich getestete Regionsliste:
+
+```text
+*:A
+de:A
+de-nord:A
+de-mitte:A
+de-west:A
+de-ni:A
+```
+
+Nach `region save` wurden die Einträge durch **RESET und anschließendes `region`** erfolgreich verifiziert. **`save` und `region save` sind nicht gleichbedeutend:** Zur eindeutigen Speicherung der Regionsliste `region save` verwenden. Regionsnamen sollten im aktuellen EEPROM-Format maximal **11 ASCII-Bytes** lang sein (zwölf Bytes inklusive Nullabschluss); längere Namen können beim Wiederladen abgeschnitten werden. Der Repeater-/Gerätename ist davon unabhängig.
+
+[Konfiguration und Persistenz](docs/AB02/CONFIGURATION.md).
+
+## Funk, Kompatibilität und Einschränkungen
+
+Im ursprünglichen Funk-Praxistest wurden `869.618 MHz`, Bandbreite `62.5 kHz`, `SF8`, `CR8` und eine im Log gemeldete Sendeleistung von `21 dBm` beobachtet; der Ping über KiekR erreichte **667 ms**. Die aktuelle OLED-/EEPROM-Firmware muss im Funkbetrieb erneut geprüft werden. Insbesondere ist noch **kein gezielter Zustellnachweis über 2-/3-Byte-Multihop-Pfade** dokumentiert.
+
+Die gemeldete Sendeleistung ist **keine Bestätigung der zulässigen EIRP oder Duty-Cycle-Konformität**. Vor unbeaufsichtigtem Betrieb Funkrecht, Antennengewinn, Strombedarf, Li-Ion-Schutz und temperaturabhängiges Laden prüfen. Kein ganzjähriger Solar-Dauerbetrieb ist nachgewiesen.
 
 ## Dokumentation
 
-- [Windows: Build, Flash, Diagnose und Recovery](docs/AB02/BUILD_WINDOWS.md)
-- [Entwicklungshistorie des Forks](CHANGELOG.md)
-- [Messprotokoll inklusive der fehlerhaften OLED-Versuche](docs/AB02/TEST_REPORT.md)
-- [Hardware und geplanter Solaraufbau](docs/AB02/HARDWARE_SOLAR.md)
-- [Paketformat und technische Grenzen](docs/AB02/COMPATIBILITY.md)
-- [Roadmap und Abnahmekriterien](docs/AB02/ROADMAP.md)
-- [Git-Workflow für mehrere PCs](docs/AB02/GIT_WORKFLOW.md)
-- [Original-README inklusive ursprünglicher Versionshistorie](docs/UPSTREAM_README.md)
-- [Originaldokumentation im Ordner `docs/`](docs/)
+- [Features und Teststatus](FEATURES.md)
+- [Changelog](CHANGELOG.md)
+- [Windows-Build / Flash / Recovery](docs/AB02/BUILD_WINDOWS.md)
+- [Regionen, EEPROM und CLI](docs/AB02/CONFIGURATION.md)
+- [Testbericht](docs/AB02/TEST_REPORT.md)
+- [Hardware und Solarplanung](docs/AB02/HARDWARE_SOLAR.md)
+- [Protokollkompatibilität](docs/AB02/COMPATIBILITY.md)
+- [Roadmap](docs/AB02/ROADMAP.md)
+- [Git-Workflow](docs/AB02/GIT_WORKFLOW.md)
+- [Original-README des Upstream-Projekts](docs/UPSTREAM_README.md)
 
-## Unterschied zum Original
+## Herkunft und Lizenz
 
-Das Ausgangsprojekt stammt von **Andrea Bernardi (`atomozero`)** und steht unter der **MIT-Lizenz**. Dieser Fork ergänzt die AB02-Boardkonfiguration, die Interpretation variabler Pfadkennungen und eine Flash-Speicheroptimierung. Die eigentliche OLED-Entwicklung läuft getrennt auf `feature/oled-diagnostics`. Änderungen am Funkprotokoll sind experimentell und sollten vor dem öffentlichen Einsatz überprüft werden.
-
-Alle ursprünglichen Lizenz- und Copyright-Hinweise bleiben erhalten. Siehe [LICENSE](LICENSE). Der originale README-Text wurde beim Umstellen der Dokumentation unverändert unter [`docs/UPSTREAM_README.md`](docs/UPSTREAM_README.md) gesichert. Er beschreibt den Stand des **Originalprojekts**, nicht notwendigerweise den aktuellen Entwicklungsstand dieses Forks.
-
-## Sicherheit und Grenzen
-
-**868-MHz-Betrieb:** Die im Test protokollierten Funkparameter waren `869.618 MHz`, `BW 62.5 kHz`, `SF8`, `CR8`; im Log wurde **21 dBm** angezeigt. Dies ist **keine Bestätigung der zulässigen EIRP, Sendezeit oder EU-Konformität**. Frequenz, Antennengewinn, Leistung, Duty-Cycle und die anwendbaren Regeln müssen vor dem Outdoor-Betrieb geprüft werden.
-
-**Stromversorgung:** Solarpanel, Zellschutz, Ladeunterbrechung bei Frost, Verdrahtung und Gehäuse sind nicht validiert. Li-Ion-Zellen im Außenbereich nicht ohne geeignete temperaturabhängige Ladefreigabe betreiben.
-
-**Fernverwaltung:** Vor öffentlichem Einsatz Passwörter/Schlüssel und Zugriffsberechtigungen prüfen. Keine privaten Schlüssel, Tokens oder persönlichen Diagnoselogs ins öffentliche Repository stellen.
+Original von [Andrea Bernardi / atomozero](https://github.com/atomozero/CubeCellMeshCore), **MIT-Lizenz**. Original-Lizenz- und Copyright-Hinweise bleiben erhalten; die bisherige Upstream-Dokumentation ist unter [`docs/UPSTREAM_README.md`](docs/UPSTREAM_README.md) archiviert. Dieser Community-Fork wird unabhängig vom offiziellen [MeshCore-Projekt](https://github.com/meshcore-dev/MeshCore) entwickelt und ist nicht mit offiziellen MeshCore-Releases gleichzusetzen.

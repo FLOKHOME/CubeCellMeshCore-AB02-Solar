@@ -1,42 +1,40 @@
 # Hardware und Solarplanung
 
-## Vorhandene bzw. betrachtete Komponenten
+**Status: 22.10.2026.** Der Repeater funktioniert als USB-versorgtes Entwicklungsgerät. Ein sicherer, unbeaufsichtigter Solar-/Akku-Dauerbetrieb ist **nicht** validiert.
 
-| Bauteil | Stand |
+## Vorhandene oder betrachtete Komponenten
+
+| Komponente | Beobachtung / Status |
 | --- | --- |
-| **Heltec CubeCell HTCC-AB02 V1.0** mit ASR6502, SX1262 und SH1107-OLED | Funkbetrieb nachgewiesen |
-| Externe 868-MHz-Antenne und Anschlusskabel | Im Test benutzt; Stecker/Antennenanpassung prüfen |
-| Solarpanel | Vorhanden, genaue Spannung/Leistung **noch nicht gemessen** |
-| 18650-Akkuhalter, Einzel- und Mehrfachausführung | Vorhanden, Verschaltung und Akkuzustand **noch nicht geprüft** |
-| TP4056-/weitere Ladeplatinen | Vorhanden, **noch keine freigegebene Solarverschaltung** |
-| Outdoor-Gehäuse | Noch nicht konstruktiv/elektrisch freigegeben |
+| **Heltec CubeCell HTCC-AB02 V1.0** mit ASR6502, SX1262, SH1107-OLED | Funk auf Basisstand, OLED/Taster und EEPROM auf Entwicklungsstand getestet |
+| Externe 868-MHz-Antenne | Im Funk-Test verwendet; Stecker, Gewinn und Montage noch zu prüfen |
+| **Solarpanel ca. 8 × 11 cm** | **Leerlaufspannung ca. 6,52 V bei Sonnenschein gemessen**; Kennlinie/Leistung nicht bekannt |
+| 18650-Akkuhalter und Li-Ion-Zellen | Vorhanden/betrachtet; konkrete Zellen, Schaltung und Schutz nicht validiert |
+| Ladeplatinen bzw. CubeCell-Ladepfad | Auswahl und Eignung für das genaue Panel/Zellmodell noch nicht bestätigt |
+| Outdoor-Gehäuse | Noch kein validierter Wetterschutz |
 
-Das HTCC-AB02 besitzt eine integrierte Ladeschaltung und einen vorgesehenen Solareingang. **Vor einem Anschluss** die aktuelle offizielle Heltec-Schaltung/Dokumentation, zulässige Eingangsspannung, Polarität und Akkutechnologie für die exakte Platinenrevision prüfen. Es liegt noch **kein getesteter Verdrahtungsplan** vor.
+Das CubeCell besitzt je nach Boardrevision einen Lade-/Solareingang. **Die gemessenen 6,52 V sind Leerlaufspannung, keine zulässige Anschlussfreigabe.** Vor Verdrahtung die Herstellerangaben für exakte Platinenrevision, zulässige Spannung/Strom, Polarität, Ladeschaltung und Akkutyp überprüfen.
 
-## Erforderliche Messungen
+## Bestätigte Diagnosefunktionen
 
-1. Paneltyp, Leerlaufspannung `Voc`, Leistung am Arbeitspunkt und Spannung unter Last feststellen. Besonders wichtig: Die Leerlaufspannung kann über der nominellen Modulspannung liegen.
-2. Akkutyp, Kapazität, Gesundheitszustand, Verpolschutz und Schutz vor Über-/Tiefentladung bestimmen.
-3. Mehrfachhalter: Reihen-/Parallelschaltung mit Multimeter eindeutig bestimmen; **keinen Reihensatz an einen 1S-Anschluss** anschließen.
-4. Stromaufnahme an der Batterie messen: Repeater mit `sleep on/off`, RGB-LED, OLED aus, OLED an, TX-Bursts. **USB-Strom ist nicht automatisch identisch mit Batterie-Strom.**
-5. Lastprofil in Wh/Tag aus realen Messungen ermitteln; Winter-Einstrahlung und tagelange Dunkelphasen berücksichtigen.
-6. Sicheren Start bei leerem Akku und bei Unterspannung nachweisen; Regenwasser, Kondensat und Kabeldurchführungen berücksichtigen.
-7. Geeignete temperaturabhängige Ladeunterbrechung vorsehen. **Normale Li-Ion-Zellen nicht bei Temperaturen unter 0 °C laden**, sofern Zelle/Ladetechnik dies nicht ausdrücklich zulassen.
-8. Antenne, Massebezug und Montageabstand zu leitenden Gehäuseteilen prüfen.
+- OLED **SH1107** erscheint auf USER-Tasterdruck und schaltet nach ca. **10 s** wieder ab.
+- Tasterentprellung erfolgreich auf dem Entwicklungsgerät getestet.
+- RGB-/NeoPixel-LED ist im getesteten Firmwarestand deaktiviert.
+- **Nicht gemessen:** ob die OLED-Versorgung tatsächlich abgeschaltet wird, der Stromverbrauch im Normalbetrieb, das Aufwecken aus jedem Sleep-Zustand und die Systemleistung unter Akkuspannung.
 
-## Geplante Diagnosefunktion
+## Mess- und Sicherheitsplan
 
-- OLED im Normalbetrieb aus; USER-Taster zeigt Status für **ca. 10 Sekunden**.
-- RGB-LED im Normalbetrieb aus. **Derzeit noch aktiv**, selbst nach nachgewiesenem OLED-Timeout.
-- Kein dauerhafter Display- oder LED-Verbrauch im Zielbetrieb.
-- Ob USER zuverlässig aus der gewählten Sleep-Konfiguration aufweckt, muss geprüft werden.
+1. Solarpanel **unter Last** messen: Spannung, Strom, Leistungsmaximum und Verhalten bei schwachem Licht; besondere Aufmerksamkeit der maximalen Leerlaufspannung bei Kälte.
+2. Ladeeingang und elektrisches Datenblatt des **HTCC-AB02 V1.0** vergleichen. Kein direkter Anschluss allein aufgrund einer gemessenen `Voc`.
+3. Akkutyp, Polung, Kapazität, Über-/Tiefentladeschutz und Sicherung klären. Mehrfachhalter auf Reihen-/Parallelschaltung prüfen – **keinen Reihensatz an einen 1S-Ladeeingang** anschließen.
+4. Batterie-seitige Stromaufnahme messen: Sleep an/aus, OLED aus/an, RGB deaktiviert, serieller Monitor, Funk-Bursts. **USB-Strom ist nicht gleich Batterie-Strom.**
+5. Wh/Tag ermitteln und die Winter-Energiebilanz mit mehrtägigen Schlechtwetterreserven dimensionieren.
+6. **Temperaturüberwachte Ladesperre bei Frost** vorsehen; übliche Li-Ion-Zellen ohne explizite Freigabe nicht unter 0 °C laden.
+7. Unterspannungsabschaltung, Wiederanlauf nach Tiefentladung, mechanischen Zellschutz und Schaltungsfehler prüfen.
+8. Gehäuse, Kondensation, Leitungsdurchführungen, Antennenzuleitung und EMV/Funkabstrahlung testen.
 
-## Sicherheit / Funkrecht
+## Funkrecht und Betrieb
 
-- Keine ungeprüfte Ladeschaltung dauerhaft im Außenbereich betreiben, insbesondere nicht mit ungeschützten 18650-Zellen.
-- Eine 868-MHz-Frequenz allein erlaubt keine beliebige Leistung oder Sendezeit. Antennengewinn/EIRP, Duty-Cycle und geltende Frequenznutzungsbedingungen vor Installation überprüfen.
-- Für einen öffentlich genutzten Repeater Fernadministration absichern; keine Schlüssel oder personenbezogenen Logs veröffentlichen.
+Der ältere Test verwendete **869.618 MHz**, **BW 62.5 kHz**, **SF8**, **CR8**; im Log wurden **21 dBm** gemeldet. Das belegt **keine** zulässige EIRP, maximale Sendezeit oder Einhaltung geltender Frequenzregelungen. Antennengewinn, Betriebsdauer und aktuelle Vorschriften vor dauerhaftem Einsatz kontrollieren.
 
-## Noch nicht behaupten
-
-**Weder 0-€-Solaraufbau noch ganzjähriger unbeaufsichtigter Betrieb sind bisher nachgewiesen.** Das Projektziel ist eine kostengünstige Konstruktion mit möglichst vielen bereits vorhandenen Bauteilen, nicht ein fertiges und zertifiziertes Outdoor-Gerät.
+**Nicht behauptet:** zertifiziertes Funkgerät, geprüfte Solar-Ladeschaltung, wintertaugliche Ladung, wasserdichter Aufbau oder ganztägig/ganzjährig autarker Betrieb.

@@ -4,7 +4,7 @@
 #include <SHA256.h>
 #include "Packet.h"
 
-#define REGION_MAX_ENTRIES    4
+#define REGION_MAX_ENTRIES    5
 #define REGION_NAME_LEN       16
 #define REGION_KEY_LEN        16
 #define REGION_DENY_FLOOD     0x01
@@ -143,7 +143,7 @@ public:
     }
 
     // EEPROM persistence - compact format (no key cache, derived on load)
-    // Layout: magic(2) + count(1) + wc_flags(1) + entries[4]*(name[12]+flags(1)) = 57 bytes
+    // Layout: magic(2) + count(1) + wc_flags(1) + entries[5]*(name[12]+flags(1)) = 69 bytes
     bool save() {
         uint16_t offset = REGION_EEPROM_OFFSET;
         uint16_t magic = REGION_EEPROM_MAGIC;

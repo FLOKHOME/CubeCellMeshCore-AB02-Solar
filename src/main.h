@@ -8,7 +8,7 @@
  * Based on MeshCore protocol: https://github.com/meshcore-dev/MeshCore
  */
 
-#define FIRMWARE_VERSION    "0.7.0-ph123"
+#define FIRMWARE_VERSION    "0.7.0-ph123-oled"
 
 //=============================================================================
 // Configuration
@@ -88,7 +88,7 @@
 #define MC_RX_BOOST_ENABLED     false
 
 // LED signaling
-#define MC_SIGNAL_NEOPIXEL      // Use NeoPixel for status
+//#define MC_SIGNAL_NEOPIXEL      // Disabled: diagnostic OLED uses Vext
 //#define MC_SIGNAL_GPIO13      // Use GPIO13 LED (HTCC-AB02A)
 
 //=============================================================================
@@ -247,7 +247,7 @@
 //=============================================================================
 // EEPROM Configuration
 //=============================================================================
-#define EEPROM_SIZE         576     // NodeConfig(112) + Identity(132) + Stats(50) + Mailbox(172) + Region(57)
+#define EEPROM_SIZE         640    // Expanded region map; previous storage layout unchanged
 #define EEPROM_MAGIC        0xCC3C      // Magic number to validate config
 #define EEPROM_VERSION      6           // Config version (6 = removed invalid region/scope fields)
 
