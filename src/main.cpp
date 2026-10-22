@@ -50,6 +50,10 @@ static bool diagDisplayActive = false;
 static uint32_t diagDisplayUntil = 0;
 static uint32_t diagLastRefresh = 0;
 static uint32_t diagLastPress = 0;
+static bool diagDebouncing = false;
+static bool diagWaitForRelease = false;
+static uint32_t diagLowSince = 0;
+static uint32_t diagHighSince = 0;
 static const char diagAlphabet[] = " 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ:-./%";
 static const uint8_t diagGlyph[][5] = {
     {0x00, 0x00, 0x00, 0x00, 0x00}, // SPACE
@@ -202,18 +206,43 @@ static void diagInit() {
 
 static void diagService() {
     const uint32_t now = millis();
-    // Capture the interrupt atomically. A short USER press may have ended
-    // before loop() checks the pin, so do not sample its level here.
     noInterrupts();
-    const bool pressed = diagButtonPressed;
+    const bool edge = diagButtonPressed;
     diagButtonPressed = false;
     interrupts();
-    // Start only once per press. Never extend the original 10-second timer.
-    if (pressed && !diagDisplayActive &&
-        (uint32_t)(now - diagLastPress) >= 300UL) {
-        diagLastPress = now;
-        diagStart();
+
+    // An IRQ alone is not proof of a physical USER press. Require the
+    // active-low pin to stay low for 40ms, then wait for a real release.
+    const bool down = (digitalRead(P3_3) == LOW);
+    if (diagWaitForRelease) {
+        if (down) {
+            diagHighSince = 0;
+        } else {
+            if (diagHighSince == 0) diagHighSince = now;
+            if ((uint32_t)(now - diagHighSince) >= 50UL)
+                diagWaitForRelease = false;
+        }
     }
+
+    if (edge && down && !diagWaitForRelease && !diagDebouncing &&
+        !diagDisplayActive && now >= 1500UL &&
+        (uint32_t)(now - diagLastPress) >= 300UL) {
+        diagDebouncing = true;
+        diagLowSince = now;
+    }
+
+    if (diagDebouncing) {
+        if (!down) {
+            diagDebouncing = false;  // glitch: pin went high too early
+        } else if ((uint32_t)(now - diagLowSince) >= 40UL) {
+            diagDebouncing = false;
+            diagWaitForRelease = true;
+            diagHighSince = 0;
+            diagLastPress = now;
+            diagStart();
+        }
+    }
+
     if (diagDisplayActive) {
         if ((int32_t)(millis() - diagDisplayUntil) >= 0) {
             diagStop();
@@ -989,7 +1018,9 @@ static bool dispatchSharedCommand(const char* cmd, CmdCtx& ctx, bool isAdmin) {
         CP("owner.info set\n");
     }
     else if (strcmp(cmd, "save") == 0) {
-        saveConfig(); CP("saved\n");
+        saveConfig();
+        bool regionsSaved = regionMap.save();
+        CP(regionsSaved ? "saved config+regions\n" : "E:regions save failed\n");
     }
     else if (strcmp(cmd, "reset") == 0) {
         resetConfig(); applyPowerSettings(); CP("reset\n");
@@ -1078,6 +1109,11 @@ static void parseAndApplyRadio(const char* args, char sep) {
 }
 
 void processCommand(char* cmd) {
+    // Ignore accidentally pasted trailing whitespace in serial commands.
+    size_t n = strlen(cmd);
+    while (n > 0 && (cmd[n - 1] == ' ' || cmd[n - 1] == '\t')) {
+        cmd[--n] = '\0';
+    }
     CmdCtx ctx = { NULL, 0, 0 };
 
     // Try shared dispatcher first (serial is always admin)
