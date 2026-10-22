@@ -245,77 +245,25 @@
 #include "mesh/Contacts.h"
 
 //=============================================================================
-// EEPROM Configuration
+// EEPROM Configuration - see core/StorageLayout.h for the single source of
+// truth. Never re-declare these constants locally: a smaller EEPROM_SIZE in
+// one translation unit silently drops writes of the persistently stored
+// region map (the EEPROM emulation ignores out-of-range accesses but still
+// reports a successful commit).
 //=============================================================================
-#define EEPROM_SIZE         640    // Expanded region map; previous storage layout unchanged
-#define EEPROM_MAGIC        0xCC3C      // Magic number to validate config
-#define EEPROM_VERSION      6           // Config version (6 = removed invalid region/scope fields)
+#include "core/StorageLayout.h"
 
-// Password length (max 15 chars + null terminator)
-#define CONFIG_PASSWORD_LEN 16
-
-// Public key size for destinations
-#define REPORT_PUBKEY_SIZE  32          // Ed25519 public key size
-
-#ifndef NODECONFIG_DEFINED
-#define NODECONFIG_DEFINED
-struct NodeConfig {
-    uint16_t magic;                         // Magic number to validate
-    uint8_t version;                        // Config version
-    uint8_t powerSaveMode;                  // 0=perf, 1=balanced, 2=powersave
-    bool rxBoostEnabled;
-    bool deepSleepEnabled;
-    char adminPassword[CONFIG_PASSWORD_LEN]; // Admin password (persistent)
-    char guestPassword[CONFIG_PASSWORD_LEN]; // Guest password (persistent)
-    // Daily report settings (v3)
-    bool reportEnabled;                     // Daily report enabled
-    uint8_t reportHour;                     // Hour to send report (0-23)
-    uint8_t reportMinute;                   // Minute to send report (0-59)
-    uint8_t reportDestPubKey[REPORT_PUBKEY_SIZE]; // Destination public key
-    // Node alert settings (v4)
-    bool alertEnabled;                      // Node alert enabled
-    uint8_t alertDestPubKey[REPORT_PUBKEY_SIZE]; // Alert destination public key
-    // Loop detection & auto-add (v5)
-    uint8_t loopDetectMode;                 // 0=off, 1=minimal, 2=moderate, 3=strict
-    uint8_t autoAddMaxHops;                 // 0=no limit, 1-64=max hops for auto-add contacts
-    uint8_t reserved[4];                    // Reserved for future use
-};
-#endif
+// NodeConfig struct: defined once in core/StorageLayout.h (included above).
 
 // Default configuration - defined in core/Config.cpp
 extern const NodeConfig defaultConfig;
 
 //=============================================================================
-// Persistent Statistics (EEPROM)
+// Persistent Statistics (EEPROM) - offsets and intervals come from
+// core/StorageLayout.h (included above).
 //=============================================================================
-#define STATS_EEPROM_OFFSET     280     // After Identity (~260 bytes)
-#define STATS_EEPROM_MAGIC      0x5754  // "ST" for stats
-#define STATS_EEPROM_VERSION    1
-#define STATS_SAVE_INTERVAL_MS  1800000 // Auto-save every 30 minutes
 
-#ifndef PERSISTENTSTATS_DEFINED
-#define PERSISTENTSTATS_DEFINED
-struct PersistentStats {
-    uint16_t magic;             // Magic number to validate
-    uint8_t version;            // Stats version
-    uint8_t reserved;           // Padding
-    // Lifetime counters (never reset)
-    uint32_t totalRxPackets;    // Total packets received
-    uint32_t totalTxPackets;    // Total packets transmitted
-    uint32_t totalFwdPackets;   // Total packets forwarded
-    uint32_t totalUniqueNodes;  // Unique nodes ever seen
-    uint32_t totalUptime;       // Total uptime in seconds
-    uint32_t totalLogins;       // Total successful logins
-    uint32_t totalLoginFails;   // Total failed login attempts
-    uint32_t totalRateLimited;  // Total rate-limited requests
-    uint16_t bootCount;         // Number of boots
-    uint16_t lastBootReason;    // Last boot reason code
-    uint32_t firstBootTime;     // Unix timestamp of first boot
-    uint32_t lastSaveTime;      // Unix timestamp of last save
-    // Checksum for integrity
-    uint16_t checksum;          // CRC16 of data
-};
-#endif
+// PersistentStats struct: defined once in core/StorageLayout.h (included above).
 
 //=============================================================================
 // CubeCell specific

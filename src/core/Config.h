@@ -11,20 +11,16 @@
 #include "globals.h"
 
 //=============================================================================
-// EEPROM Configuration defines (duplicated from main.h to avoid include issues)
+// EEPROM Configuration defines
+//
+// Previously duplicated from main.h with a DIFFERENT EEPROM_SIZE (576 here,
+// 640 in main.h). Because this translation unit only saw the local value, the
+// runtime EEPROM window was 576 bytes while the region map writes up to offset
+// 580 - the EEPROM emulation drops such writes silently and still reports a
+// successful commit, so the 5th region lost its flags byte and part of its
+// name on every reboot. All layout constants now live in StorageLayout.h.
 //=============================================================================
-#ifndef EEPROM_SIZE
-#define EEPROM_SIZE         576
-#endif
-#ifndef EEPROM_MAGIC
-#define EEPROM_MAGIC        0xCC3C
-#endif
-#ifndef EEPROM_VERSION
-#define EEPROM_VERSION      6
-#endif
-#ifndef CONFIG_PASSWORD_LEN
-#define CONFIG_PASSWORD_LEN 16
-#endif
+#include "StorageLayout.h"
 
 
 //=============================================================================
@@ -36,73 +32,18 @@
 #define LOOP_DETECT_STRICT    3  // Strict: allow only 1 occurrence (original behavior)
 
 //=============================================================================
-// NodeConfig structure
+// NodeConfig structure - defined once in StorageLayout.h (included above).
 //=============================================================================
-#ifndef NODECONFIG_DEFINED
-#define NODECONFIG_DEFINED
-struct NodeConfig {
-    uint16_t magic;
-    uint8_t version;
-    uint8_t powerSaveMode;
-    bool rxBoostEnabled;
-    bool deepSleepEnabled;
-    char adminPassword[CONFIG_PASSWORD_LEN];
-    char guestPassword[CONFIG_PASSWORD_LEN];
-    bool reportEnabled;
-    uint8_t reportHour;
-    uint8_t reportMinute;
-    uint8_t reportDestPubKey[REPORT_PUBKEY_SIZE];
-    bool alertEnabled;
-    uint8_t alertDestPubKey[REPORT_PUBKEY_SIZE];
-    uint8_t loopDetectMode;   // 0=off, 1=minimal, 2=moderate, 3=strict
-    uint8_t autoAddMaxHops;   // 0=no limit, 1-64=max hops for auto-add contacts
-    uint8_t maxFloodHops;       // 0=default(8), 1-15=max flood hops
-    uint8_t advertIntervalMin;  // 0=default(5), 1-240=advert interval in minutes
-    uint8_t floodAdvertHrs;     // 0=auto, 3-48=flood advert interval in hours
-    uint8_t reserved1;          // Reserved for future use
-};
-#endif
 
 // Default configuration - declared extern, defined in Config.cpp
 extern const NodeConfig defaultConfig;
 
 //=============================================================================
-// Persistent Statistics defines
+// Persistent Statistics - offsets, magic, version and save interval come from
+// StorageLayout.h. The local fallbacks previously used a save interval of
+// 5 minutes, which is what actually took effect (288 full flash commits per
+// day); the 30 minute value in main.h never reached this translation unit.
 //=============================================================================
-#ifndef STATS_EEPROM_OFFSET
-#define STATS_EEPROM_OFFSET     280
-#endif
-#ifndef STATS_EEPROM_MAGIC
-#define STATS_EEPROM_MAGIC      0x5754
-#endif
-#ifndef STATS_EEPROM_VERSION
-#define STATS_EEPROM_VERSION    1
-#endif
-#ifndef STATS_SAVE_INTERVAL_MS
-#define STATS_SAVE_INTERVAL_MS  300000
-#endif
-
-#ifndef PERSISTENTSTATS_DEFINED
-#define PERSISTENTSTATS_DEFINED
-struct PersistentStats {
-    uint16_t magic;
-    uint8_t version;
-    uint8_t reserved;
-    uint32_t totalRxPackets;
-    uint32_t totalTxPackets;
-    uint32_t totalFwdPackets;
-    uint32_t totalUniqueNodes;
-    uint32_t totalUptime;
-    uint32_t totalLogins;
-    uint32_t totalLoginFails;
-    uint32_t totalRateLimited;
-    uint16_t bootCount;
-    uint16_t lastBootReason;
-    uint32_t firstBootTime;
-    uint32_t lastSaveTime;
-    uint16_t checksum;
-};
-#endif
 
 //=============================================================================
 // Configuration Functions

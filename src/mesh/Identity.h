@@ -12,16 +12,16 @@
  * This is fully compatible with MeshCore firmware
  */
 
-// EEPROM layout for identity (starts after NodeConfig)
-#define IDENTITY_EEPROM_OFFSET  128     // After NodeConfig (~112 bytes)
+// EEPROM layout for identity (starts after NodeConfig). Offsets and key sizes
+// are shared with the other storage users via core/StorageLayout.h, which also
+// compile-time checks that the blocks do not overlap.
+#include "../core/StorageLayout.h"
+
 #define IDENTITY_MAGIC          0x4D43  // "MC" for MeshCore
 #define IDENTITY_VERSION        2       // Version 2: 64-byte private key (orlp/ed25519)
 
 // Key sizes - MeshCore compatible
-#define MC_PRIVATE_KEY_SIZE     64      // orlp/ed25519 uses 64-byte expanded private key
-#define MC_PUBLIC_KEY_SIZE      32
 #define MC_SIGNATURE_SIZE       64
-#define MC_NODE_NAME_MAX        16
 
 // Node type (lower 4 bits of flags byte) - mutually exclusive values
 #define MC_TYPE_MASK            0x0F
@@ -50,6 +50,11 @@ struct NodeIdentity {
     int32_t longitude;                      // Longitude * 1000000 (optional)
     uint8_t reserved[8];                    // Reserved for future use
 };
+
+// The statistics block starts at STATS_EEPROM_OFFSET; keep the identity block
+// from growing into it (StorageLayout.h checks the offsets against this size).
+static_assert(sizeof(NodeIdentity) == IDENTITY_STRUCT_SIZE,
+              "NodeIdentity size changed - recheck the EEPROM layout in core/StorageLayout.h");
 
 /**
  * Identity Manager Class

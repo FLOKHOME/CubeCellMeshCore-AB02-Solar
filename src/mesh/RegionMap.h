@@ -4,15 +4,16 @@
 #include <SHA256.h>
 #include "Packet.h"
 
-#define REGION_MAX_ENTRIES    5
+// EEPROM layout constants (offset, magic, entry count, stored name length) come
+// from the single source of truth in core/StorageLayout.h. Its compile-time
+// checks guarantee that the region block ends before EEPROM_SIZE, which the
+// EEPROM emulation requires: accesses beyond the size passed to EEPROM.begin()
+// are dropped silently while commit() still reports success.
+#include "../core/StorageLayout.h"
+
 #define REGION_NAME_LEN       16
 #define REGION_KEY_LEN        16
 #define REGION_DENY_FLOOD     0x01
-
-// EEPROM persistence
-#define REGION_EEPROM_OFFSET  512
-#define REGION_EEPROM_MAGIC   0x5247    // "RG"
-#define REGION_SAVE_NAME_LEN  12        // Compact name in EEPROM (enough for "au-nsw" etc.)
 
 struct RegionEntry {
     char name[REGION_NAME_LEN];
@@ -79,20 +80,29 @@ public:
         return &_wildcard;
     }
 
-    // Add or update a region entry
+    // Add or update a region entry.
+    // The name is truncated to the persisted length first: the transport key is
+    // derived from the name, so a name that is stored truncated would derive a
+    // different key after a reboot and silently stop matching.
     bool put(const char* name) {
         if (!name || name[0] == '\0') return false;
+
+        char stored[REGION_SAVE_NAME_LEN];
+        strncpy(stored, name, REGION_SAVE_NAME_LEN - 1);
+        stored[REGION_SAVE_NAME_LEN - 1] = '\0';
+        if (stored[0] == '\0') return false;
+
         // Check if already exists
         for (uint8_t i = 0; i < _count; i++) {
-            if (strncmp(_entries[i].name, name, REGION_NAME_LEN - 1) == 0) {
+            if (strncmp(_entries[i].name, stored, REGION_NAME_LEN - 1) == 0) {
                 return true;    // Already exists
             }
         }
         if (_count >= REGION_MAX_ENTRIES) return false;
-        strncpy(_entries[_count].name, name, REGION_NAME_LEN - 1);
+        strncpy(_entries[_count].name, stored, REGION_NAME_LEN - 1);
         _entries[_count].name[REGION_NAME_LEN - 1] = '\0';
         _entries[_count].flags = 0;
-        deriveKey(name, _entries[_count].key);
+        deriveKey(stored, _entries[_count].key);
         _count++;
         return true;
     }
@@ -143,15 +153,21 @@ public:
     }
 
     // EEPROM persistence - compact format (no key cache, derived on load)
-    // Layout: magic(2) + count(1) + wc_flags(1) + entries[5]*(name[12]+flags(1)) = 69 bytes
+    // Layout: magic(2) + count(1) + wc_flags(1) + entries[5]*(name[12]+flags(1))
+    // = REGION_SAVE_BYTES (69) bytes starting at REGION_EEPROM_OFFSET (512).
     bool save() {
+        // Refuse instead of silently dropping the tail of the block.
+        if ((uint32_t)REGION_EEPROM_OFFSET + REGION_SAVE_BYTES > EEPROM.length()) {
+            return false;
+        }
+
         uint16_t offset = REGION_EEPROM_OFFSET;
         uint16_t magic = REGION_EEPROM_MAGIC;
         EEPROM.put(offset, magic);          offset += 2;
         EEPROM.put(offset, _count);         offset += 1;
         EEPROM.put(offset, _wildcard.flags); offset += 1;
         for (uint8_t i = 0; i < REGION_MAX_ENTRIES; i++) {
-            // Write compact name (12 bytes)
+            // Write compact name (12 bytes, zero padded)
             char compactName[REGION_SAVE_NAME_LEN];
             memset(compactName, 0, REGION_SAVE_NAME_LEN);
             if (i < _count) {
@@ -168,6 +184,10 @@ public:
     }
 
     bool load() {
+        if ((uint32_t)REGION_EEPROM_OFFSET + REGION_SAVE_BYTES > EEPROM.length()) {
+            return false;
+        }
+
         uint16_t offset = REGION_EEPROM_OFFSET;
         uint16_t magic;
         EEPROM.get(offset, magic);          offset += 2;
@@ -188,6 +208,9 @@ public:
             for (uint8_t j = 0; j < REGION_SAVE_NAME_LEN; j++) {
                 compactName[j] = EEPROM.read(offset + j);
             }
+            // The stored bytes are not guaranteed to be NUL terminated (an
+            // out-of-range read returns 0, but stale or foreign data does not).
+            compactName[REGION_SAVE_NAME_LEN - 1] = '\0';
             offset += REGION_SAVE_NAME_LEN;
             uint8_t flags = EEPROM.read(offset);
             offset += 1;
