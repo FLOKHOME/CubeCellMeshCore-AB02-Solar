@@ -1,6 +1,6 @@
 # Konfiguration, Regionen und EEPROM – HTCC-AB02
 
-**Stand: 22.10.2026 · Firmwarezweig `feature/oled-diagnostics` (`bf9c48b`)**
+**Stand: 22.10.2026 · Release `v0.8.0` (`main`, Firmwarekennung `0.8.0`)**
 
 ## Zentrale Konfigurationsdatei `config/repeater.json`
 

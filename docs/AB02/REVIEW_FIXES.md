@@ -1,6 +1,6 @@
 # Review-Fixes – Branch `fix/eeprom-layout-review`
 
-**Stand: 22.10.2026 · Basis: `main` (`52f108d`) · 4 Commits · Firmware-Build verifiziert, Hardware-Test offen**
+**Stand: 22.10.2026 · Basis: `main` (`52f108d`) · 6 Commits · gemergt in `v0.8.0` · Build verifiziert, Hardware-Test teilweise bestätigt**
 
 Dieser Bericht dokumentiert die Fehler, die bei einer statischen Analyse plus manueller
 Prüfung des Codes gefunden wurden, und was dagegen unternommen wurde. Jede Angabe ist
@@ -39,24 +39,37 @@ Code-Referenz belegt; Aussagen ohne Nachweis sind als solche markiert.
 ## Nachweise
 
 ```text
-Build:           128.960 / 131.072 B Flash (98,4 %), 9.624 B RAM
+Build:           128.936 / 131.072 B Flash (98,4 %), 9.624 B RAM   (v0.8.0, mit config/repeater.json)
 Konfig-Tests:    python3 tools/test_user_config.py           -> 18/18
 Krypto-Host-Test: tools/hosttest/run.sh 52f108d
    === fixed ===        oversized packet: cipherLen=145, return=0,   canary intact=yes
    === base-52f108d === oversized packet: cipherLen=145, return=145, canary intact=NO
 ```
 
-## Auf Hardware zu prüfen (offen)
+## Auf Hardware zu prüfen
 
-1. `[A] ADV: on every <Sekunden>` beim Boot zeigt den **wirksamen** Wert (nicht 300).
-2. `advert interval` nach einem RESET → gleicher Wert wie vorher.
-3. `region` vor und nach RESET → fünf Einträge plus `*` unverändert.
-4. Ein Paket für einen Offline-Knoten puffern (`mailbox` zeigt `E1:`), dann RESET →
+**Bestätigt am 22.10.2026** (Boot-Log der geflashten Firmware; der Versionsstring darin war
+noch `v0.7.0-ph123-oled`, der Code enthielt die Review-Korrekturen bereits):
+
+1. ✅ `[A] ADV: on every <Sekunden>` beim Boot zeigt den **wirksamen** Wert (nicht 300) —
+   beobachtet: `7200`.
+2. ✅ `advert interval` nach einem RESET → `Int:120m next:7165s`. Die **fehlende** Zeile
+   `[C] User config applied` belegt, dass der Wert aus `loadConfig()` (EEPROM) kam und nicht
+   erneut aus der Build-Konfiguration — genau der reparierte Fall.
+3. ✅ `region` nach RESET → fünf Einträge plus `*` unverändert.
+4. ✅ `config` meldet `Cfg:built-in fp:… stored:applied`.
+
+**Weiterhin offen:**
+
+5. ⏳ Ein Paket für einen Offline-Knoten puffern (`mailbox` zeigt `E1:`), dann RESET →
    `region` weiterhin vollständig (vorher zerstörte genau das die Regionsliste).
-5. Login von der App (Admin und Gast) sowie `config` per Konsole.
-6. Gerichteter Ping/Trace über 2+ Hops (Prüft Punkt 12; die letzte Strecke zum Ziel muss
+6. ⏳ Login von der App (Admin und Gast) sowie `config apply` per Konsole.
+7. ⏳ Gerichteter Ping/Trace über 2+ Hops (prüft Punkt 12; die letzte Strecke zum Ziel muss
    weiterhin gesendet werden).
-7. 24-h-Lauf mit Solar/Akku: kommen ADVERTs im eingestellten Raster?
+8. ⏳ 24-h-Lauf mit Solar/Akku: kommen ADVERTs im eingestellten Raster?
+9. ⏳ Deep Sleep: wird der ADVERT **wirklich** im Raster gesendet? `stats` liefert
+   `ADV:<tx>/<rx>`; zweimal mit Abstand von über einem Advert-Intervall aufrufen, ohne
+   dazwischen zu resetten (USER-Taste öffnet ein ca. 10-s-Konsolenfenster).
 
 ## Nebenwirkung des Upgrades
 
