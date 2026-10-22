@@ -65,6 +65,34 @@ py -m platformio device monitor --port COM3 --baud 115200 --echo
 
 Der Fork enthält die PathHash-/Quiet-Logging-Anpassungen bereits: **Historische Patch-Skripte nicht erneut anwenden.** Siehe [Windows-Build, Flash und Recovery](docs/AB02/BUILD_WINDOWS.md).
 
+## Zentrale Konfiguration `config/repeater.json`
+
+Statt jede Einstellung nach dem Flashen über die serielle Konsole einzugeben, wird **vor dem Kompilieren** die Datei `config/repeater.json` bearbeitet:
+
+```cmd
+REM 1) Repo klonen   2) config\repeater.json bearbeiten   3) bauen   4) flashen
+notepad config\repeater.json
+py -m platformio run -e cubecell_board_plus -t upload --upload-port COM3
+```
+
+Beim ersten Start übernimmt die Firmware die Werte automatisch und speichert sie dauerhaft im EEPROM. Enthalten sind Name, Standort, Funkparameter (Frequenz, Bandbreite, SF, CR, Sendeleistung), ADVERT-Intervalle, Regionenliste (inkl. `*`/Deny), Flood-/Loop-Grenzen, Energieoptionen und optional Admin-/Gast-Passwort.
+
+```json
+{
+  "name": "DE-NI-HARSUM01",
+  "radio": { "frequency_mhz": 869.618, "bandwidth_khz": 62.5, "spreading_factor": 8, "coding_rate": 8, "tx_power_dbm": 21 },
+  "regions": { "allow": ["*", "de", "de-nord", "de-mitte", "de-west", "de-ni"], "deny_flood": [] }
+}
+```
+
+- Die Datei wird beim Build von `tools/gen_user_config.py` validiert und in `src/generated/UserConfigData.{h,cpp}` übersetzt — **kein JSON-Parser in der Firmware** (das Image ist mit 98,1 % fast voll).
+- Ungültige Werte brechen den Build mit Klartextmeldung ab (`[userconfig] CHECK FAILED: …`).
+- Übernommen wird nur, wenn sich die Datei geändert hat (Fingerabdruck im EEPROM, `NodeConfig.configHash`). Manuell per Konsole gesetzte Werte bleiben sonst unangetastet.
+- Prüfbefehle: `config` (Status `applied`/`stale`), `config apply` (erzwingt erneutes Anwenden).
+- Ohne `config/repeater.json` baut die Firmware unverändert mit den eingebauten Vorgaben.
+
+Speicherbedarf des Beispiel-Builds mit Konfigurationsdatei: **128.544 / 131.072 B Flash (98,1 %)**, 9.624 B RAM. Details: [Konfiguration, Regionen und EEPROM](docs/AB02/CONFIGURATION.md).
+
 ## Serielle Regionskonfiguration
 
 Die aktuelle CubeCell-Implementierung verwaltet eine separat vorhandene Wildcard und **fünf benannte Regionen**. Die Einträge sind **flach**: Ein vermeintlicher Parent-Parameter aus einem JSON-Profil wird von dieser Firmware **nicht als Regionshierarchie interpretiert**.

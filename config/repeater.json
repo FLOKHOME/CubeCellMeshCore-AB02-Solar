@@ -1,0 +1,52 @@
+{
+  "_comment": "Zentrale Konfiguration. Vor dem Kompilieren anpassen - der Wert wird fest in die Firmware eingebaut und beim ersten Start (sowie nach jeder Aenderung) automatisch uebernommen und dauerhaft im EEPROM gespeichert. Nach dem Aendern neu kompilieren und flashen.",
+  "name": "DE-NI-HARSUM01",
+  "location": {
+    "_comment": "Breite/Laenge in Dezimalgrad. 0.0/0.0 = Standort nicht setzen/beibehalten.",
+    "latitude": 0.0,
+    "longitude": 0.0
+  },
+  "radio": {
+    "_comment": "Muss zum Netz passen. Vorgabe = MeshCore 'EU/UK Narrow'.",
+    "frequency_mhz": 869.618,
+    "bandwidth_khz": 62.5,
+    "spreading_factor": 8,
+    "coding_rate": 8,
+    "tx_power_dbm": 21,
+    "preamble_len": 16
+  },
+  "advertising": {
+    "_comment": "local_interval_minutes: ADVERT-Intervall (1-240). flood_interval_hours: zusaetzliches Flood-ADVERT (0=aus, 3-48).",
+    "local_interval_minutes": 120,
+    "flood_interval_hours": 6
+  },
+  "regions": {
+    "_comment": "Wird beim Anwenden vollstaendig neu gesetzt. '*' = Wildcard: Flood-Pakete ohne Regionstreffer werden weitergeleitet. Fehlt '*', werden solche Pakete verworfen. Namen max. 11 Zeichen, max. 5 benannte Regionen.",
+    "allow": [
+      "*",
+      "de",
+      "de-nord",
+      "de-mitte",
+      "de-west",
+      "de-ni"
+    ],
+    "deny_flood": []
+  },
+  "network": {
+    "_comment": "max_flood_hops 1-15, loop_detect 0-3 (0=aus, 3=strikt), auto_add_max_hops 0-64 (0=kein Limit).",
+    "max_flood_hops": 8,
+    "loop_detect": 3,
+    "auto_add_max_hops": 0
+  },
+  "power": {
+    "_comment": "power_saving: 0=performance, 1=balanced (Empfehlung), 2=sparsam.",
+    "power_saving": 1,
+    "deep_sleep": true,
+    "rx_boost": false
+  },
+  "security": {
+    "_comment": "Leer lassen = vorhandenes Passwort im EEPROM behalten. Bei neuem Geraet unbedingt setzen - sonst gilt weiterhin 'admin'/'guest'.",
+    "admin_password": "",
+    "guest_password": ""
+  }
+}

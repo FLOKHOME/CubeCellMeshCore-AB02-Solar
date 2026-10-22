@@ -21,7 +21,13 @@
 #define EEPROM_SIZE             640     // Must be >= STORAGE_LAYOUT_END
 #define EEPROM_MAGIC            0xCC3C
 #define EEPROM_VERSION          6       // Config version (6 = removed invalid region/scope fields)
+// configHash was added at the end of NodeConfig in the previously unused tail
+// of the configuration block (bytes 112-127, identity starts at 128), so the
+// layout stays compatible and existing settings - including the passwords - are
+// not discarded on the update. A stale value in those bytes only means the
+// compiled-in configuration is applied once more.
 #define CONFIG_EEPROM_OFFSET    0
+#define CONFIG_STRUCT_SIZE      116     // sizeof(NodeConfig) incl. configHash
 #define CONFIG_PASSWORD_LEN     16
 #define REPORT_PUBKEY_SIZE      32      // Ed25519 public key size
 
@@ -46,6 +52,24 @@
 #define STATS_SAVE_INTERVAL_MS  1800000UL
 
 //=============================================================================
+// Store-and-forward mailbox block - offset 336, 176 bytes -> ends at 511
+//
+// Was at offset 340 with an assumed footprint of 172 bytes ("2 slots in EEPROM
+// (172 bytes at offset 340)"), which only holds for a packed struct. With the
+// natural alignment of MailboxSlot (76-byte payload => 88 bytes per slot) the
+// block really spanned 340..523 and therefore overwrote the region map header
+// at 512..523: as soon as one message was stored for an offline node, the
+// region magic was gone and every region was silently dropped on the next boot.
+// The slot struct is now padding-free (84 bytes) so the block ends exactly at
+// REGION_EEPROM_OFFSET - 1.
+//=============================================================================
+#define MAILBOX_EEPROM_OFFSET   336
+#define MAILBOX_SLOTS           2
+#define MAILBOX_SLOT_BYTES      84      // sizeof(MailboxSlot): 4+1+1+76, padded to 4
+#define MAILBOX_HEADER_BYTES    8       // sizeof(MailboxHeader)
+#define MAILBOX_SAVE_BYTES      (MAILBOX_HEADER_BYTES + MAILBOX_SLOTS * MAILBOX_SLOT_BYTES)
+
+//=============================================================================
 // Region map block - offset 512, 69 bytes -> ends at 580
 //=============================================================================
 #define REGION_EEPROM_OFFSET    512
@@ -65,7 +89,7 @@
 #error "EEPROM_SIZE is smaller than the storage layout; region data would be dropped silently"
 #endif
 
-#if IDENTITY_EEPROM_OFFSET < CONFIG_EEPROM_OFFSET + 112
+#if IDENTITY_EEPROM_OFFSET < CONFIG_EEPROM_OFFSET + CONFIG_STRUCT_SIZE
 #error "Identity block overlaps the configuration block"
 #endif
 
@@ -73,8 +97,16 @@
 #error "Statistics block overlaps the identity block - recheck EEPROM offsets"
 #endif
 
-#if REGION_EEPROM_OFFSET < STATS_EEPROM_OFFSET + STATS_STRUCT_SIZE
-#error "Region map block overlaps the statistics block - recheck EEPROM offsets"
+#if MAILBOX_EEPROM_OFFSET < STATS_EEPROM_OFFSET + STATS_STRUCT_SIZE
+#error "Mailbox block overlaps the statistics block - recheck EEPROM offsets"
+#endif
+
+#if MAILBOX_EEPROM_OFFSET + MAILBOX_SAVE_BYTES > REGION_EEPROM_OFFSET
+#error "Mailbox block overlaps the region map block - storing a message would destroy the region magic"
+#endif
+
+#if REGION_EEPROM_OFFSET < MAILBOX_EEPROM_OFFSET + MAILBOX_SAVE_BYTES
+#error "Region map block overlaps the mailbox block - recheck EEPROM offsets"
 #endif
 
 #if EEPROM_SIZE > 768
@@ -117,6 +149,7 @@ struct NodeConfig {
     uint8_t advertIntervalMin;              // 0=default(5), 1-240=advert interval in minutes
     uint8_t floodAdvertHrs;                 // 0=auto, 3-48=flood advert interval in hours
     uint8_t reserved1;                      // Reserved for future use
+    uint32_t configHash;                    // Fingerprint of the applied compiled-in user configuration
 };
 #endif
 
@@ -143,5 +176,5 @@ struct PersistentStats {
 };
 #endif
 
-static_assert(sizeof(NodeConfig) == 112, "NodeConfig size changed - EEPROM layout needs a version bump");
+static_assert(sizeof(NodeConfig) == CONFIG_STRUCT_SIZE, "NodeConfig size changed - EEPROM layout needs a version bump");
 static_assert(sizeof(PersistentStats) == 52, "PersistentStats size changed - EEPROM layout needs a version bump");

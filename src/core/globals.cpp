@@ -79,6 +79,13 @@ uint8_t powerSaveMode = 1;
 uint8_t loopDetectMode = LOOP_DETECT_STRICT;  // Default: strict (backward compat)
 
 //=============================================================================
+// Compiled-in user configuration
+//=============================================================================
+// Loaded from NodeConfig.configHash, written back on every saveConfig().
+// 0 = "never applied" (this is also what defaultConfig carries).
+uint32_t storedUserConfigHash = 0;
+
+//=============================================================================
 // Auto-add Max Hops Filter
 //=============================================================================
 uint8_t autoAddMaxHops = 0;  // Default: no limit

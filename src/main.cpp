@@ -8,6 +8,7 @@
 #include "main.h"
 #include "core/Led.h"
 #include "core/Config.h"
+#include "core/UserConfig.h"
 
 //=============================================================================
 // HTCC-AB02 minimal SH1107 128x64 text status, on USER press for 10 seconds.
@@ -1021,6 +1022,22 @@ static bool dispatchSharedCommand(const char* cmd, CmdCtx& ctx, bool isAdmin) {
         saveConfig();
         bool regionsSaved = regionMap.save();
         CP(regionsSaved ? "saved config+regions\n" : "E:regions save failed\n");
+    }
+    else if (isAdmin && strcmp(cmd, "config") == 0) {
+        // Show what the compiled-in configuration contains (config/repeater.json)
+        CP("Cfg:%s fp:%08lX stored:",
+           hasCompiledUserConfig() ? "built-in" : "none",
+           (unsigned long)getUserConfigFingerprint());
+        CP(storedUserConfigHash == getUserConfigFingerprint() ? "applied\n" : "stale\n");
+    }
+    else if (isAdmin && strcmp(cmd, "config apply") == 0) {
+        // Force a re-apply of config/repeater.json (overwrites manual changes)
+        if (!hasCompiledUserConfig()) {
+            CP("E:no config/repeater.json in this build\n");
+        } else {
+            bool applied = applyCompiledUserConfig(true);
+            CP(applied ? "cfg applied\n" : "E:apply failed\n");
+        }
     }
     else if (strcmp(cmd, "reset") == 0) {
         resetConfig(); applyPowerSettings(); CP("reset\n");
@@ -3461,6 +3478,13 @@ void setup() {
 
     // Load region map from EEPROM
     regionMap.load();
+
+    // Apply the configuration compiled in from config/repeater.json. Runs once
+    // after flashing and again whenever that file changed - the settings are
+    // written to the EEPROM, so nothing has to be typed into the serial console.
+    if (applyCompiledUserConfig(false)) {
+        LOG(TAG_CONFIG " User config applied\n\r");
+    }
 
     initLed();
     diagInit();

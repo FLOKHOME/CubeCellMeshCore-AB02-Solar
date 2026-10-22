@@ -39,7 +39,14 @@
 // LoRa settings for MeshCore compatibility
 // Default: MeshCore "EU/UK Narrow" preset (869.618 MHz from MeshCore app)
 // Change MC_FREQUENCY to match your network if different
-#ifdef MC_REGION_EU868
+//
+// If config/repeater.json exists, tools/gen_user_config.py generated
+// src/generated/UserConfigData.h from it and MC_FREQUENCY..MC_PREAMBLE_LEN are
+// already defined - the presets below are then skipped and are only the
+// fallback for a build without a configuration file.
+#include "generated/UserConfigData.h"
+
+#if defined(MC_REGION_EU868) && !defined(MC_FREQUENCY)
     #define MC_FREQUENCY        869.618f    // MHz - EU/UK Narrow (MeshCore app)
     #define MC_BANDWIDTH        62.5f       // kHz (narrow)
     #define MC_SPREADING        8           // SF8
@@ -48,7 +55,7 @@
     #define MC_PREAMBLE_LEN     16
 #endif
 
-#ifdef MC_REGION_US915
+#if defined(MC_REGION_US915) && !defined(MC_FREQUENCY)
     #define MC_FREQUENCY        910.525f    // MHz
     #define MC_BANDWIDTH        62.5f       // kHz (narrow)
     #define MC_SPREADING        7           // SF7
@@ -57,7 +64,7 @@
     #define MC_PREAMBLE_LEN     16
 #endif
 
-#ifdef MC_REGION_AU915
+#if defined(MC_REGION_AU915) && !defined(MC_FREQUENCY)
     #define MC_FREQUENCY        916.525f    // MHz
     #define MC_BANDWIDTH        62.5f       // kHz (narrow)
     #define MC_CODING_RATE      5           // 4/5

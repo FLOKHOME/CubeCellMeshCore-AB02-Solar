@@ -5,25 +5,36 @@
 
 /**
  * Store-and-Forward Mailbox
- * Persistent: 2 slots in EEPROM (172 bytes at offset 340)
+ * Persistent: 2 slots in EEPROM (MAILBOX_SAVE_BYTES at MAILBOX_EEPROM_OFFSET)
  * Overflow: 4 slots in RAM (volatile, lost on reboot)
  * Re-delivers when destination node comes back online
+ *
+ * The EEPROM offsets come from core/StorageLayout.h, which also checks at
+ * compile time that this block cannot reach into the region map.
  */
 
-#define MAILBOX_EEPROM_OFFSET   340
+#include "../core/StorageLayout.h"
+
 #define MAILBOX_MAGIC           0xBB0F
-#define MAILBOX_VERSION         1
-#define MAILBOX_SLOTS           2       // EEPROM persistent slots
+#define MAILBOX_VERSION         2       // 2 = padding-free slot layout, block moved to offset 336
 #define MAILBOX_RAM_SLOTS       4       // RAM overflow slots
 #define MAILBOX_PKT_MAX         76      // Max serialized packet size per slot
 #define MAILBOX_TTL_SEC         86400   // 24 hours
 
+// The uint32_t timestamp comes first so the struct needs no alignment padding:
+// with destHash first, the compiler inserted 3 bytes and the slot grew from 82
+// to 88 bytes, which made the block overrun into the region map.
 struct MailboxSlot {
-    uint8_t destHash;           // Destination node hash (payload[0])
     uint32_t timestamp;         // Unix time when stored
+    uint8_t destHash;           // Destination node hash (payload[0])
     uint8_t pktLen;             // Serialized packet length (0 = empty)
     uint8_t pktData[MAILBOX_PKT_MAX]; // Raw serialized packet
 };
+
+static_assert(sizeof(MailboxSlot) == MAILBOX_SLOT_BYTES,
+              "MailboxSlot size changed - recheck the EEPROM layout in core/StorageLayout.h");
+static_assert(MAILBOX_EEPROM_OFFSET + MAILBOX_SAVE_BYTES <= REGION_EEPROM_OFFSET,
+              "Mailbox EEPROM block would overlap the region map");
 
 struct MailboxHeader {
     uint16_t magic;
@@ -31,6 +42,9 @@ struct MailboxHeader {
     uint8_t count;              // Number of occupied EEPROM slots
     uint8_t reserved[4];
 };
+
+static_assert(sizeof(MailboxHeader) == MAILBOX_HEADER_BYTES,
+              "MailboxHeader size changed - recheck the EEPROM layout in core/StorageLayout.h");
 
 class Mailbox {
 private:
