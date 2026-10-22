@@ -127,16 +127,28 @@ struct MCPacket {
         return (rt == MC_ROUTE_TRANSPORT_FLOOD || rt == MC_ROUTE_TRANSPORT_DIRECT);
     }
 
+    // MeshCore >=1.14: top two bits of pathLen encode hash size minus 1.
+    // Bottom six bits encode HOP COUNT, not byte count.
+    inline uint8_t getPathHashSize() const { return (pathLen >> 6) + 1; }
+    inline uint8_t getHopCount() const { return pathLen & 0x3F; }
+    inline uint16_t getPathByteLen() const { return (uint16_t)getHopCount() * getPathHashSize(); }
+    inline bool validPath() const {
+        return getPathHashSize() <= 3 && getPathByteLen() <= MC_MAX_PATH_SIZE;
+    }
+    inline void setHopCount(uint8_t hops) {
+        pathLen = (pathLen & 0xC0) | (hops & 0x3F);
+    }
+
     // Calculate total packet size for TX
     // Wire format with transport codes:    [header 1B][tc 4B][pathLen 1B][path...][payload...]
     // Wire format without transport codes: [header 1B][pathLen 1B][path...][payload...]
     inline uint16_t getTotalSize() const {
-        return 1 + (hasTransportCodes() ? 4 : 0) + 1 + pathLen + payloadLen;
+        return 1 + (hasTransportCodes() ? 4 : 0) + 1 + getPathByteLen() + payloadLen;
     }
 
     // Serialize packet to buffer for transmission
     uint16_t serialize(uint8_t* buf, uint16_t maxLen) const {
-        if (getTotalSize() > maxLen) return 0;
+        if (!validPath() || payloadLen > MC_MAX_PAYLOAD_SIZE || getTotalSize() > maxLen) return 0;
 
         uint16_t pos = 0;
         buf[pos++] = header.raw;
@@ -148,9 +160,10 @@ struct MCPacket {
 
         buf[pos++] = pathLen;
 
-        if (pathLen > 0) {
-            memcpy(&buf[pos], path, pathLen);
-            pos += pathLen;
+        uint16_t pathBytes = getPathByteLen();
+        if (pathBytes > 0) {
+            memcpy(&buf[pos], path, pathBytes);
+            pos += pathBytes;
         }
 
         if (payloadLen > 0) {
@@ -181,21 +194,19 @@ struct MCPacket {
         if (pos >= len) return false;
         pathLen = buf[pos++];
 
-        // Validate pathLen
-        if (pathLen > MC_MAX_PATH_SIZE) return false;
-        if (pos + pathLen > len) return false;
+        // Reject reserved encoding and path bytes beyond packet/buffer.
+        if (!validPath()) return false;
+        uint16_t pathBytes = getPathByteLen();
+        if (pos + pathBytes > len) return false;
 
-        // Copy path data
-        if (pathLen > 0) {
-            memcpy(path, &buf[pos], pathLen);
-            pos += pathLen;
+        if (pathBytes > 0) {
+            memcpy(path, &buf[pos], pathBytes);
+            pos += pathBytes;
         }
 
         // Payload is everything remaining
         uint16_t availablePayload = len - pos;
-        if (availablePayload > MC_MAX_PAYLOAD_SIZE) {
-            availablePayload = MC_MAX_PAYLOAD_SIZE;
-        }
+        if (availablePayload > MC_MAX_PAYLOAD_SIZE) return false;
         payloadLen = availablePayload;
 
         if (payloadLen > 0) {

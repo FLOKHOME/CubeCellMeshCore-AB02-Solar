@@ -8,7 +8,7 @@
  * Based on MeshCore protocol: https://github.com/meshcore-dev/MeshCore
  */
 
-#define FIRMWARE_VERSION    "0.7.0"
+#define FIRMWARE_VERSION    "0.7.0-ph123"
 
 //=============================================================================
 // Configuration
@@ -185,7 +185,7 @@
     inline void printTimestamp() {
         Serial.printf("%lu ", millis()/1000);
     }
-    #define LOG(...) do { printTimestamp(); Serial.printf(__VA_ARGS__); } while(0)
+    #define LOG(...) do {} while(0)
     #define LOG_RAW(...) Serial.printf(__VA_ARGS__)
     #define LOG_HEX(buf, len) do { \
         for(uint16_t i=0; i<len; i++) Serial.printf("%02X", buf[i]); \
@@ -224,7 +224,7 @@
         uint32_t hr = min / 60;
         Serial.printf(ANSI_DIM "%02lu:%02lu:%02lu" ANSI_RESET " ", hr % 100, min % 60, sec % 60);
     }
-    #define LOG(...) do { printTimestamp(); Serial.printf(__VA_ARGS__); } while(0)
+    #define LOG(...) do {} while(0)
     #define LOG_RAW(...) Serial.printf(__VA_ARGS__)
     #define LOG_HEX(buf, len) do { \
         for(uint16_t i=0; i<len; i++) Serial.printf("%02X", buf[i]); \
