@@ -35,7 +35,8 @@ const NodeConfig defaultConfig = {
     0,      // maxFloodHops (0=default 8)
     0,      // advertIntervalMin (0=default 5)
     0,      // floodAdvertHrs (0=auto)
-    0       // reserved1
+    0,      // reserved1
+    0       // configHash (0 = compiled-in user configuration not applied yet)
 };
 
 //=============================================================================
@@ -86,6 +87,10 @@ void loadConfig() {
         if (config.floodAdvertHrs >= 3 && config.floodAdvertHrs <= 48)
             floodAdvertIntervalMs = (uint32_t)config.floodAdvertHrs * 3600000UL;
 
+        // Fingerprint of the compiled-in user configuration that is persisted
+        // here; applyCompiledUserConfig() only runs when it differs.
+        storedUserConfigHash = config.configHash;
+
         CONFIG_LOG("[C] Loaded (report=%s, alert=%s)\n\r",
             reportEnabled ? "on" : "off",
             alertEnabled ? "on" : "off");
@@ -114,6 +119,10 @@ void loadConfig() {
 
         // Set default auto-add max hops
         autoAddMaxHops = defaultConfig.autoAddMaxHops;
+
+        // No stored fingerprint: the compiled-in user configuration (if any)
+        // will be applied once by applyCompiledUserConfig().
+        storedUserConfigHash = 0;
 
         CONFIG_LOG("[C] First boot, using defaults\n\r");
         saveConfig();  // Save defaults
@@ -154,8 +163,17 @@ void saveConfig() {
     config.maxFloodHops = repeaterHelper.getMaxFloodHops();
     uint32_t advMs = advertGen.getInterval();
     config.advertIntervalMin = (advMs / 60000UL) > 255 ? 255 : (uint8_t)(advMs / 60000UL);
-    config.floodAdvertHrs = floodAdvertIntervalMs > 0 ? (uint8_t)(floodAdvertIntervalMs / 3600000UL) : 0;
+    // Clamp like advertIntervalMin above: a plain (uint8_t) cast wrapped the
+    // value modulo 256, so a longer flood interval changed silently on reload.
+    uint32_t floodHrs = floodAdvertIntervalMs / 3600000UL;
+    config.floodAdvertHrs = (floodAdvertIntervalMs > 0)
+                                ? (uint8_t)(floodHrs > 255 ? 255 : floodHrs)
+                                : 0;
     config.reserved1 = 0;
+
+    // Fingerprint of the compiled-in user configuration that produced these
+    // values (0 = built-in defaults, no config/repeater.json applied).
+    config.configHash = storedUserConfigHash;
 
     EEPROM.put(0, config);
     if (EEPROM.commit()) {

@@ -8,7 +8,7 @@
  * Based on MeshCore protocol: https://github.com/meshcore-dev/MeshCore
  */
 
-#define FIRMWARE_VERSION    "0.7.0-ph123-oled"
+#define FIRMWARE_VERSION    "0.8.0"
 
 //=============================================================================
 // Configuration
@@ -39,7 +39,14 @@
 // LoRa settings for MeshCore compatibility
 // Default: MeshCore "EU/UK Narrow" preset (869.618 MHz from MeshCore app)
 // Change MC_FREQUENCY to match your network if different
-#ifdef MC_REGION_EU868
+//
+// If config/repeater.json exists, tools/gen_user_config.py generated
+// src/generated/UserConfigData.h from it and MC_FREQUENCY..MC_PREAMBLE_LEN are
+// already defined - the presets below are then skipped and are only the
+// fallback for a build without a configuration file.
+#include "generated/UserConfigData.h"
+
+#if defined(MC_REGION_EU868) && !defined(MC_FREQUENCY)
     #define MC_FREQUENCY        869.618f    // MHz - EU/UK Narrow (MeshCore app)
     #define MC_BANDWIDTH        62.5f       // kHz (narrow)
     #define MC_SPREADING        8           // SF8
@@ -48,7 +55,7 @@
     #define MC_PREAMBLE_LEN     16
 #endif
 
-#ifdef MC_REGION_US915
+#if defined(MC_REGION_US915) && !defined(MC_FREQUENCY)
     #define MC_FREQUENCY        910.525f    // MHz
     #define MC_BANDWIDTH        62.5f       // kHz (narrow)
     #define MC_SPREADING        7           // SF7
@@ -57,7 +64,7 @@
     #define MC_PREAMBLE_LEN     16
 #endif
 
-#ifdef MC_REGION_AU915
+#if defined(MC_REGION_AU915) && !defined(MC_FREQUENCY)
     #define MC_FREQUENCY        916.525f    // MHz
     #define MC_BANDWIDTH        62.5f       // kHz (narrow)
     #define MC_CODING_RATE      5           // 4/5
@@ -245,77 +252,25 @@
 #include "mesh/Contacts.h"
 
 //=============================================================================
-// EEPROM Configuration
+// EEPROM Configuration - see core/StorageLayout.h for the single source of
+// truth. Never re-declare these constants locally: a smaller EEPROM_SIZE in
+// one translation unit silently drops writes of the persistently stored
+// region map (the EEPROM emulation ignores out-of-range accesses but still
+// reports a successful commit).
 //=============================================================================
-#define EEPROM_SIZE         640    // Expanded region map; previous storage layout unchanged
-#define EEPROM_MAGIC        0xCC3C      // Magic number to validate config
-#define EEPROM_VERSION      6           // Config version (6 = removed invalid region/scope fields)
+#include "core/StorageLayout.h"
 
-// Password length (max 15 chars + null terminator)
-#define CONFIG_PASSWORD_LEN 16
-
-// Public key size for destinations
-#define REPORT_PUBKEY_SIZE  32          // Ed25519 public key size
-
-#ifndef NODECONFIG_DEFINED
-#define NODECONFIG_DEFINED
-struct NodeConfig {
-    uint16_t magic;                         // Magic number to validate
-    uint8_t version;                        // Config version
-    uint8_t powerSaveMode;                  // 0=perf, 1=balanced, 2=powersave
-    bool rxBoostEnabled;
-    bool deepSleepEnabled;
-    char adminPassword[CONFIG_PASSWORD_LEN]; // Admin password (persistent)
-    char guestPassword[CONFIG_PASSWORD_LEN]; // Guest password (persistent)
-    // Daily report settings (v3)
-    bool reportEnabled;                     // Daily report enabled
-    uint8_t reportHour;                     // Hour to send report (0-23)
-    uint8_t reportMinute;                   // Minute to send report (0-59)
-    uint8_t reportDestPubKey[REPORT_PUBKEY_SIZE]; // Destination public key
-    // Node alert settings (v4)
-    bool alertEnabled;                      // Node alert enabled
-    uint8_t alertDestPubKey[REPORT_PUBKEY_SIZE]; // Alert destination public key
-    // Loop detection & auto-add (v5)
-    uint8_t loopDetectMode;                 // 0=off, 1=minimal, 2=moderate, 3=strict
-    uint8_t autoAddMaxHops;                 // 0=no limit, 1-64=max hops for auto-add contacts
-    uint8_t reserved[4];                    // Reserved for future use
-};
-#endif
+// NodeConfig struct: defined once in core/StorageLayout.h (included above).
 
 // Default configuration - defined in core/Config.cpp
 extern const NodeConfig defaultConfig;
 
 //=============================================================================
-// Persistent Statistics (EEPROM)
+// Persistent Statistics (EEPROM) - offsets and intervals come from
+// core/StorageLayout.h (included above).
 //=============================================================================
-#define STATS_EEPROM_OFFSET     280     // After Identity (~260 bytes)
-#define STATS_EEPROM_MAGIC      0x5754  // "ST" for stats
-#define STATS_EEPROM_VERSION    1
-#define STATS_SAVE_INTERVAL_MS  1800000 // Auto-save every 30 minutes
 
-#ifndef PERSISTENTSTATS_DEFINED
-#define PERSISTENTSTATS_DEFINED
-struct PersistentStats {
-    uint16_t magic;             // Magic number to validate
-    uint8_t version;            // Stats version
-    uint8_t reserved;           // Padding
-    // Lifetime counters (never reset)
-    uint32_t totalRxPackets;    // Total packets received
-    uint32_t totalTxPackets;    // Total packets transmitted
-    uint32_t totalFwdPackets;   // Total packets forwarded
-    uint32_t totalUniqueNodes;  // Unique nodes ever seen
-    uint32_t totalUptime;       // Total uptime in seconds
-    uint32_t totalLogins;       // Total successful logins
-    uint32_t totalLoginFails;   // Total failed login attempts
-    uint32_t totalRateLimited;  // Total rate-limited requests
-    uint16_t bootCount;         // Number of boots
-    uint16_t lastBootReason;    // Last boot reason code
-    uint32_t firstBootTime;     // Unix timestamp of first boot
-    uint32_t lastSaveTime;      // Unix timestamp of last save
-    // Checksum for integrity
-    uint16_t checksum;          // CRC16 of data
-};
-#endif
+// PersistentStats struct: defined once in core/StorageLayout.h (included above).
 
 //=============================================================================
 // CubeCell specific

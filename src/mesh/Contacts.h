@@ -183,6 +183,11 @@ public:
                 const char* contactName = contacts[i].name;
                 size_t contactLen = strlen(contactName);
 
+                // A longer search string can never match: without this guard
+                // "contactLen - searchLen" underflows for size_t and the loop
+                // below reads far past the contact name buffer.
+                if (searchLen > contactLen) continue;
+
                 // Check if search string is found anywhere in contact name
                 for (size_t j = 0; j <= contactLen - searchLen; j++) {
                     bool match = true;

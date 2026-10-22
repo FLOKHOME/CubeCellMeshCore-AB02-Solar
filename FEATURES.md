@@ -1,8 +1,8 @@
 # Features – CubeCellMeshCore HTCC-AB02 Solar
 
-**Stand: 22.10.2026** · Entwicklungszweig [`feature/oled-diagnostics`](https://github.com/FLOKHOME/CubeCellMeshCore-AB02-Solar/tree/feature/oled-diagnostics) · Firmware-Commit `bf9c48b`.
+**Stand: 22.10.2026** · Release [`v0.8.0`](https://github.com/FLOKHOME/CubeCellMeshCore-AB02-Solar/releases/tag/v0.8.0) · Branch `main`, Firmwarekennung `0.8.0`.
 
-Diese Liste trennt **implementierte Funktionen**, **auf Hardware bestätigte Beobachtungen** und **noch ausstehende Validierung**. Sie beschreibt den Entwicklungszweig; auf `main` kann der Funktionsumfang abweichen.
+Diese Liste trennt **implementierte Funktionen**, **auf Hardware bestätigte Beobachtungen** und **noch ausstehende Validierung**. Sie beschreibt den Stand von `main` (`v0.8.0`).
 
 ## Funk und MeshCore
 

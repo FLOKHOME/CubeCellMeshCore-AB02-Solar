@@ -41,3 +41,7 @@ __pycache__/
 battdebug.py
 PROMPT_SIMULATOR.md
 *.bak-*
+
+# Generated from config/repeater.json by tools/gen_user_config.py
+src/generated/
+tools/hosttest/build/

@@ -2,20 +2,33 @@
 
 Dieses Changelog beschreibt **Entwicklungsstände dieses Community-Forks**, nicht offizielle MeshCore-Releases. Die Originalhistorie von [atomozero/CubeCellMeshCore](https://github.com/atomozero/CubeCellMeshCore) steht in [`docs/UPSTREAM_README.md`](docs/UPSTREAM_README.md) und in der Git-Historie.
 
-## [Unreleased] – 22.10.2026, `feature/oled-diagnostics`
+## [v0.8.0] – 22.10.2026
 
-Firmware-Commit: [`bf9c48b`](https://github.com/FLOKHOME/CubeCellMeshCore-AB02-Solar/commit/bf9c48b) – `Fix OLED debounce and persist extended MeshCore regions`. **Entwicklungszweig, noch nicht nach `main` gemergt; kein freigegebenes stabiles Release.**
+**Erstes stabiles Release dieses Forks auf `main`.** Es fasst die bedarfsgesteuerte OLED-Diagnose, die persistente Regionsspeicherung, das korrigierte EEPROM-Layout, die zentrale Konfiguration `config/repeater.json` sowie mehrere Puffer- und CLI-Korrekturen zusammen. Die Arbeitszweige `feature/oled-diagnostics` (`bf9c48b`) und `docs/project-documentation` sind vollständig in `main` aufgegangen; der Review-Zweig `fix/eeprom-layout-review` wurde nach `main` gemergt.
 
 ### Added
 
+- Zentrale Build-Zeit-Konfiguration **`config/repeater.json`**: `tools/gen_user_config.py` validiert die Datei beim Kompilieren und übersetzt sie in `src/generated/UserConfigData.{h,cpp}` — bewusst **ohne JSON-Parser in der Firmware** (das Image ist zu ~98 % gefüllt). Übernommen wird nur bei geändertem Fingerabdruck (`NodeConfig.configHash`); Prüfbefehle `config` und `config apply`. (`a674a17`)
 - Diagnoseanzeige auf dem **SH1107-OLED** per **USER-Taster** mit Software-I²C und automatischem Abschalten nach ungefähr **10 Sekunden**.
 - Tasterentprellung gegen ungewollte bzw. mehrfach ausgelöste Displayaktivierung.
 - Regionenkapazität von **4 auf 5 benannte Einträge** erweitert; Wildcard `*` wird zusätzlich separat geführt.
-- EEPROM-Reservierung von **576 auf 640 Bytes** erhöht. Regionsblock: Offset **512–580** (69 Bytes, fünf Einträge).
-- Persistenz der Regionskonfiguration repariert: `region save` wird erkannt; nach RESET können alle fünf benannten Regionen und `*` wieder geladen werden.
+- EEPROM-Reservierung von **576 auf 640 Bytes** erhöht (drei Flash-Zeilen à 256 Byte).
+- Host-Regressionstest `tools/hosttest/run.sh`, der die echten Krypto-Header gegen eine portable Crypto-Bibliothek auf dem PC kompiliert.
+
+### Fixed
+
+- **EEPROM-Layout:** `EEPROM_SIZE` war doppelt definiert (640 in `main.h`, 576 in `core/Config.h`); die Region-Map schrieb bis Offset 580, wobei die 5. Region Flags und Namensende verlor. Jetzt eine einzige Quelle (`core/StorageLayout.h`) mit `static_assert`- und `#error`-Schutz. (`c9cbde8`)
+- **Mailbox:** Der Mailbox-Block überlappte den Region-Header; ein einziges zwischengespeichertes Paket löschte die Region-Magic, nach RESET waren alle Regionen weg. Mailbox auf 84-Byte-Slots bei Offset 336 verlegt. (`a674a17`)
+- **ADVERT-Intervall:** `setup()` setzte das Intervall nach `loadConfig()` unbedingt auf 5 min zurück und schrieb das ins EEPROM. Reihenfolge korrigiert; der gespeicherte Wert bleibt nach RESET erhalten. (`cc95656`)
+- **Krypto/Stack:** `MACThenDecrypt()` begrenzte die Ausgabe nicht — ein ANON_REQ mit bis zu 145 Byte lief in einen 128-Byte-Puffer über, vor der Authentifizierung erreichbar. `zeroPad()` verschlüsselte bei leerer Eingabe uninitialisierten Stack. (`5362dad`, mit Host-Regressionstest)
+- **Sitzungsverwaltung:** Ein Admin konnte durch wiederholte Gast-Logins aus der Sitzungstabelle verdrängt werden.
+- **Weitere:** `findByName()`-Unterlauf, Mailbox-`load()`-Validierung, Werte-Wrap bei `set tx`/`txdelay` u. a., CayenneLPP-Überlauf, `floodAdvertHrs`-Wrap, unnötiges Re-Broadcast eines eigenen DIRECT-Pakets.
+
+Details und Nachweise: [Review-Fixes](docs/AB02/REVIEW_FIXES.md).
 
 ### Changed
 
+- Firmwarekennung auf **`0.8.0`** gesetzt (`ver`, Boot-Banner).
 - RGB-/NeoPixel-LED ist in der getesteten Entwicklungsfirmware deaktiviert.
 - Serielle Befehlsverarbeitung für die Regionsspeicherung korrigiert. Allgemeines `save` nicht mit `region save` verwechseln.
 - Geräteprofil: `DE-NI-HARSUM01`; getestete Regionen `*`, `de`, `de-nord`, `de-mitte`, `de-west`, `de-ni`, jeweils Flood erlaubt (`A`).
@@ -23,19 +36,52 @@ Firmware-Commit: [`bf9c48b`](https://github.com/FLOKHOME/CubeCellMeshCore-AB02-S
 
 ### Verified on hardware
 
+- **Das ADVERT-Intervall übersteht einen RESET.** Boot-Log der geflashten Firmware (der Versionsstring darin war noch der alte; der Code enthielt die Review-Korrekturen bereits):
+
+  ```text
+  CubeCellMeshCore v0.7.0-ph123-oled EU868
+  [C] Loaded (report=off, alert=off)
+  [S] Stats loaded (boots=23, rx=185, tx=186, nodes=80)
+  [ID] Loaded
+  [A] ADV: on every 7200s
+  config
+  Cfg:built-in fp:4AF69790 stored:applied
+  advert interval
+  Int:120m next:7165s
+  region
+  *:A
+  de:A
+  de-nord:A
+  de-mitte:A
+  de-west:A
+  de-ni:A
+  ```
+
+  Entscheidend ist die **fehlende** Zeile `[C] User config applied`: die `config/repeater.json` wurde in diesem Boot **nicht erneut** angewendet. Der Wert `7200 s` stammt damit aus `loadConfig()` (EEPROM) und nicht aus der Build-Konfiguration — genau der Fall, den `cc95656` repariert hat. Zusätzlich belegt `[A] ADV:` (Tag erst ab `cc95656` vorhanden), dass der gefixte Code läuft.
+- **Zentrale Konfiguration wird übernommen:** `Cfg:… stored:applied`, und `advert interval` liest `Int:120m` entsprechend `advertising.local_interval_minutes: 120`. Der abweichende Fingerabdruck `4AF69790` gehört zum angepassten lokalen `config/repeater.json` des Betreibers, nicht zur Beispielkonfiguration im Repo.
+- **Regionen:** alle sechs Einträge (`*` plus fünf benannte) sind nach dem RESET unverändert vorhanden.
+- **Deep Sleep im Akku-/Solarbetrieb** (`power.deep_sleep: true`) läuft; die serielle Konsole ist nur innerhalb von `BOOT_SAFE_PERIOD_MS` (2 min) nach dem RESET erreichbar.
 - OLED lässt sich per USER aktivieren, schaltet nach ca. 10 s wieder aus und zeigte nach Entprellung keine unbeabsichtigten Aktivierungen im Test.
 - RGB-LED bleibt im getesteten Zustand aus.
-- `region put` akzeptiert jetzt auch die fünfte benannte Region `de-ni`.
-- `region save` erfolgreich; alle sechs Einträge einschließlich `*` bleiben **nach RESET** vorhanden.
 - Gerätekennung und Name `DE-NI-HARSUM01` bleiben erhalten.
-- Build **nach Kapazitätserweiterung, aber vor letzter Persistenzkorrektur**: **127.384 / 131.072 B Flash (97,2 %)**, **9.648 / 16.384 B RAM (58,9 %)**, `SUCCESS`. Endgültige Größe des Commits `bf9c48b` nicht separat protokolliert.
+
+### Build
+
+- `v0.8.0` **ohne** `config/repeater.json`: **128.200 / 131.072 B Flash (97,8 %)**, **9.624 / 16.384 B RAM (58,7 %)**, `SUCCESS`.
+- `v0.8.0` **mit** `config/repeater.json`: **128.936 / 131.072 B Flash (98,4 %)**, **9.624 / 16.384 B RAM (58,7 %)**, `SUCCESS`.
+
+Beide Werte wurden mit dem Release-Stand `v0.8.0` **neu gemessen**. Frühere Angaben (127.472 B ohne / 128.960 B mit Konfiguration) stammten aus einem Zwischenstand vor den Krypto-/CLI-Fixes und sind überholt. Die eingebaute Konfiguration kostet rund **736 B** Flash. Wegen des CubeCell-Bootloaders sagt ein erfolgreicher Build noch nichts über einen erfolgreichen Upload oder Funkbetrieb. Der Flash ist mit 98,4 % nahezu voll — neue Funktionen brauchen vorher Platz.
 
 ### Pending / limitations
 
-- Funkweiterleitung und Ping **mit dem letzten OLED-/EEPROM-Stand** erneut testen; frühere Funkerfolge stammen von der Basisfirmware.
-- Gezielte Zustelltests über echte 2-/3-Byte-Multihop-Pfade sowie längere Laufzeit fehlen.
-- OLED-Stromabschaltung, Schlafmodus, Batterie-/Solar-Energiebilanz und Frost-Ladeschutz nicht gemessen/validiert.
+- **Regionen nach einem Store-and-Forward** (`mailbox` zeigt `E1:`, danach RESET) sind auf Hardware noch nicht gegengeprüft.
+- **Gerichteter Ping/Trace über 2+ Hops** fehlt weiterhin (Prüft den DIRECT-Forward-Fix).
+- **24-h-Lauf mit Solar/Akku** sowie Frost-Ladeschutz sind nicht gemessen/validiert.
+- Funkweiterleitung **nach** dem letzten EEPROM-/OLED-Update ist nicht erneut end-to-end nachgewiesen.
 - Regionsnamen im EEPROM maximal **11 ASCII-Bytes**, da `REGION_SAVE_NAME_LEN=12` den Terminator einschließt. Größere Werte können beim Neustart gekürzt werden.
+- **Mit `deep_sleep: true` ist die serielle Konsole nur 2 Minuten nach RESET erreichbar** (`BOOT_SAFE_PERIOD_MS`). Für Messungen am Tisch `sleep off` eingeben (bleibt im EEPROM) oder die USER-Taste für ein ca. 10-sekündiges Konsolenfenster nutzen.
+- Der Health-Monitor führt Knoten nach **30 Minuten** ohne Kontakt als offline (`HEALTH_OFFLINE_MS`). Bei ADVERT-Intervallen über 30 min erscheint der Repeater für andere Knoten entsprechend lange als offline.
+- Ob der ADVERT im Deep Sleep **tatsächlich im Raster gesendet** wird, ist noch nicht gemessen. Prüfweg: `stats` liefert `ADV:<tx>/<rx>`; zweimal mit Abstand von über einem Advert-Intervall aufrufen, ohne dazwischen zu resetten (USER-Taste öffnet das Konsolenfenster).
 
 ## [v0.7.0-ph123] – getestet am 21.–22.10.2026
 
