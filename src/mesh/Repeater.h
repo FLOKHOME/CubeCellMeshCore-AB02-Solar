@@ -1515,7 +1515,13 @@ public:
     bool addAnalogInputInt(uint8_t channel, int16_t value) {
         if (cursor + 4 > maxSize) return false;
 
-        int16_t val = value * 100;
+        // CayenneLPP transmits a signed 16 bit value scaled by 100. Compute in
+        // 32 bit and saturate: "value * 100" overflowed for |value| > 327 (e.g.
+        // uptime hours on a long running node) and sent a wrong value.
+        int32_t scaled = (int32_t)value * 100;
+        if (scaled > 32767) scaled = 32767;
+        else if (scaled < -32768) scaled = -32768;
+        int16_t val = (int16_t)scaled;
         buffer[cursor++] = channel;
         buffer[cursor++] = LPP_ANALOG_INPUT;
         buffer[cursor++] = (val >> 8) & 0xFF;

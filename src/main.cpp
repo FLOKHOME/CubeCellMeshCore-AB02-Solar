@@ -337,6 +337,17 @@ static bool parseBW1(const char* s, uint32_t* out) {
     return true;
 }
 
+// Parse a non-negative decimal option value.
+// Returns -1 when the text is not a plain number, so a value can no longer wrap
+// silently through a narrow cast such as (uint8_t)atoi("set txdelay 65536").
+static int32_t parseOptionValue(const char* s) {
+    if (!s || *s == '\0') return -1;
+    char* end = nullptr;
+    long v = strtol(s, &end, 10);
+    if (end == s || *end != '\0' || v < 0) return -1;
+    return (int32_t)v;
+}
+
 //=============================================================================
 // Unified CLI Output Abstraction
 //=============================================================================
@@ -403,7 +414,14 @@ static bool dispatchSharedCommand(const char* cmd, CmdCtx& ctx, bool isAdmin) {
         uint8_t start = 0, end = count;
         const uint8_t PAGE_SIZE = 3;
         if (cmd[5] == ' ') {
-            uint8_t page = (uint8_t)atoi(cmd + 6);
+            // Parse into 32 bit and bound the page: "page * 3" was truncated
+            // into a uint8_t before, so large indices wrapped to a wrong page.
+            int32_t pageReq = parseOptionValue(cmd + 6);
+            if (pageReq < 0 || pageReq > 85) {
+                CP("E:page 0-85\n");
+                return true;
+            }
+            uint8_t page = (uint8_t)pageReq;
             start = page * PAGE_SIZE;
             end = start + PAGE_SIZE;
             if (start >= count) { CP("Nodes:%d pg:%d empty\n", count, page); }
@@ -878,9 +896,11 @@ static bool dispatchSharedCommand(const char* cmd, CmdCtx& ctx, bool isAdmin) {
             char* space = strchr(args, ' ');
             if (space) {
                 *space = '\0';
-                uint8_t start = (uint8_t)atoi(args);
-                uint8_t end = (uint8_t)atoi(space + 1);
-                if (start <= 23 && end <= 23) {
+                int32_t startReq = parseOptionValue(args);
+                int32_t endReq = parseOptionValue(space + 1);
+                if (startReq >= 0 && startReq <= 23 && endReq >= 0 && endReq <= 23) {
+                    uint8_t start = (uint8_t)startReq;
+                    uint8_t end = (uint8_t)endReq;
                     repeaterHelper.setQuietHours(start, end);
                     CP("quiet:%d-%d\n", start, end);
                 } else CP("E:0-23\n");
@@ -897,8 +917,10 @@ static bool dispatchSharedCommand(const char* cmd, CmdCtx& ctx, bool isAdmin) {
         CP("TxP:%ddBm auto:off\n", MC_TX_POWER);
     }
     else if (strncmp(cmd, "set tx ", 7) == 0 && strncmp(cmd, "set tx auto", 11) != 0) {
-        int8_t p = (int8_t)atoi(cmd + 7);
-        if (p >= ADAPTIVE_TX_MIN_POWER && p <= MC_TX_POWER) {
+        // Validate in 32 bit: "(int8_t)atoi("set tx 265")" wrapped to 9 dBm.
+        int32_t pReq = parseOptionValue(cmd + 7);
+        if (pReq >= ADAPTIVE_TX_MIN_POWER && pReq <= MC_TX_POWER) {
+            int8_t p = (int8_t)pReq;
             repeaterHelper.setAdaptiveTxEnabled(false);
             repeaterHelper.setTxPower(p);
             radio.setOutputPower(p);
@@ -906,8 +928,10 @@ static bool dispatchSharedCommand(const char* cmd, CmdCtx& ctx, bool isAdmin) {
         } else CP("E:%d-%d\n", ADAPTIVE_TX_MIN_POWER, MC_TX_POWER);
     }
     else if (strncmp(cmd, "txpower ", 8) == 0) {
-        int8_t p = (int8_t)atoi(cmd + 8);
-        if (p >= ADAPTIVE_TX_MIN_POWER && p <= MC_TX_POWER) {
+        // Validate the 32 bit value before narrowing it, see "set tx" above.
+        int32_t pReq = parseOptionValue(cmd + 8);
+        if (pReq >= ADAPTIVE_TX_MIN_POWER && pReq <= MC_TX_POWER) {
+            int8_t p = (int8_t)pReq;
             repeaterHelper.setAdaptiveTxEnabled(false);
             repeaterHelper.setTxPower(p);
             radio.setOutputPower(p);
@@ -945,8 +969,9 @@ static bool dispatchSharedCommand(const char* cmd, CmdCtx& ctx, bool isAdmin) {
         char* space = strchr(args, ' ');
         if (space) {
             *space = '\0';
-            uint8_t perm = (uint8_t)atoi(space + 1);
-            if (perm <= 3 && strlen(args) >= 12) {
+            int32_t permReq = parseOptionValue(space + 1);
+            if (permReq >= 0 && permReq <= 3 && strlen(args) >= 12) {
+                uint8_t perm = (uint8_t)permReq;
                 uint8_t pk[6];
                 for (int i = 0; i < 6; i++) {
                     char b[3] = {args[i*2], args[i*2+1], 0};
@@ -967,18 +992,20 @@ static bool dispatchSharedCommand(const char* cmd, CmdCtx& ctx, bool isAdmin) {
         } else CP("E:setperm <12+hex> [0-3]\n");
     }
     else if (strncmp(cmd, "set txdelay ", 12) == 0) {
-        uint16_t v = (uint16_t)atoi(cmd + 12);
-        if (v <= 500) { configTxDelayFactor = v; CP("txdelay:%d\n", v); }
+        // Parse in 32 bit: "(uint16_t)atoi("set txdelay 65536")" wrapped to 0
+        // and passed the range check below.
+        int32_t vReq = parseOptionValue(cmd + 12);
+        if (vReq >= 0 && vReq <= 500) { configTxDelayFactor = (uint16_t)vReq; CP("txdelay:%ld\n", (long)vReq); }
         else CP("E:0-500\n");
     }
     else if (strncmp(cmd, "set rxdelay ", 12) == 0) {
-        uint16_t v = (uint16_t)atoi(cmd + 12);
-        if (v <= 500) { configRxDelayFactor = v; CP("rxdelay:%d\n", v); }
+        int32_t vReq = parseOptionValue(cmd + 12);
+        if (vReq >= 0 && vReq <= 500) { configRxDelayFactor = (uint16_t)vReq; CP("rxdelay:%ld\n", (long)vReq); }
         else CP("E:0-500\n");
     }
     else if (strncmp(cmd, "set direct.txdelay ", 19) == 0) {
-        uint16_t v = (uint16_t)atoi(cmd + 19);
-        if (v <= 500) { configDirectTxDelay = v; CP("direct.txdelay:%d\n", v); }
+        int32_t vReq = parseOptionValue(cmd + 19);
+        if (vReq >= 0 && vReq <= 500) { configDirectTxDelay = (uint16_t)vReq; CP("direct.txdelay:%ld\n", (long)vReq); }
         else CP("E:0-500\n");
     }
     else if (strncmp(cmd, "set flood.advert.interval ", 25) == 0) {
@@ -988,31 +1015,38 @@ static bool dispatchSharedCommand(const char* cmd, CmdCtx& ctx, bool isAdmin) {
         else CP("E:0,3-48\n");
     }
     else if (strncmp(cmd, "set agc.reset.interval ", 23) == 0) {
-        uint16_t secs = (uint16_t)atoi(cmd + 23);
-        secs = (secs / 4) * 4;  // Round down to multiple of 4
-        if (secs <= 3600) { configAgcResetInterval = secs; CP("agc.rst:%ds\n", secs); }
-        else CP("E:0-3600\n");
+        int32_t secsReq = parseOptionValue(cmd + 23);
+        if (secsReq >= 0 && secsReq <= 3600) {
+            uint16_t secs = (uint16_t)((secsReq / 4) * 4);  // Round down to multiple of 4
+            configAgcResetInterval = secs; CP("agc.rst:%ds\n", secs);
+        } else CP("E:0-3600\n");
     }
     else if (strncmp(cmd, "set af ", 7) == 0) {
-        // Parse "X.Y" as tenths (e.g. "1.5" -> 15)
+        // Parse "X.Y" as tenths (e.g. "1.5" -> 15).
+        // Percentages are computed in int32_t: with "(uint8_t)atoi" a value like
+        // "256" wrapped to 0 and passed the range check as "0.0".
         const char* s = cmd + 7;
-        uint8_t whole = (uint8_t)atoi(s);
-        uint8_t frac = 0;
+        int32_t whole = atoi(s);
+        int32_t xfrac = 0;
         const char* dot = strchr(s, '.');
-        if (dot && dot[1] >= '0' && dot[1] <= '9') frac = dot[1] - '0';
-        uint8_t val = whole * 10 + frac;
-        if (val <= 90) { configAirtimeFactor = val; CP("af:%d.%d\n", val / 10, val % 10); }
-        else CP("E:0.0-9.0\n");
+        if (dot && dot[1] >= '0' && dot[1] <= '9') xfrac = dot[1] - '0';
+        int32_t val = whole * 10 + xfrac;
+        if (whole >= 0 && val >= 0 && val <= 90) {
+            configAirtimeFactor = (uint8_t)val;
+            CP("af:%ld.%ld\n", (long)(val / 10), (long)(val % 10));
+        } else CP("E:0.0-9.0\n");
     }
     else if (strncmp(cmd, "set adc.multiplier ", 19) == 0) {
         const char* s = cmd + 19;
-        uint8_t whole = (uint8_t)atoi(s);
-        uint8_t frac = 0;
+        int32_t whole = atoi(s);
+        int32_t xfrac = 0;
         const char* dot = strchr(s, '.');
-        if (dot && dot[1] >= '0' && dot[1] <= '9') frac = dot[1] - '0';
-        uint8_t val = whole * 10 + frac;
-        if (val <= 100) { configAdcMultiplier = val; CP("adc.mul:%d.%d\n", val / 10, val % 10); }
-        else CP("E:0.0-10.0\n");
+        if (dot && dot[1] >= '0' && dot[1] <= '9') xfrac = dot[1] - '0';
+        int32_t val = whole * 10 + xfrac;
+        if (whole >= 0 && val >= 0 && val <= 100) {
+            configAdcMultiplier = (uint8_t)val;
+            CP("adc.mul:%ld.%ld\n", (long)(val / 10), (long)(val % 10));
+        } else CP("E:0.0-10.0\n");
     }
     else if (strncmp(cmd, "set owner.info ", 15) == 0) {
         const char* txt = cmd + 15;
@@ -2169,6 +2203,14 @@ bool sendEncryptedToAdmin(const uint8_t* destPubKey, const char* text, uint16_t 
 
     // Build plaintext: [timestamp:4][txt_type|attempt:1][message]
     uint8_t plaintext[104];
+
+    // Bound the text before copying: 5 bytes header plus the AES padding of the
+    // ciphertext have to fit into plaintext[104] and encrypted[120]. Callers
+    // stay well below this today, but nothing enforced it.
+    if (textLen > (uint16_t)(sizeof(plaintext) - 5 - MC_AES_BLOCK_SIZE)) {
+        textLen = (uint16_t)(sizeof(plaintext) - 5 - MC_AES_BLOCK_SIZE);
+    }
+
     uint32_t timestamp = timeSync.getTimestamp();
     plaintext[0] = timestamp & 0xFF;
     plaintext[1] = (timestamp >> 8) & 0xFF;
@@ -2421,11 +2463,19 @@ bool shouldForward(MCPacket* pkt) {
             return false;
     }
 
-    // Don't forward packets specifically addressed to us
+    // Don't forward packets specifically addressed to us.
+    //
+    // For a DIRECT packet whose path ends here (hopCount 1 = we are the last hop
+    // named in the route) this is checked for every payload type: the packet has
+    // arrived and re-queueing it transmitted it once more with an empty path,
+    // which only cost air time and inflated the forward counter. A DIRECT packet
+    // with hopCount 1 that is addressed to somebody else is still relayed - the
+    // final hop from the last repeater to the destination is required.
     uint8_t payloadType = pkt->header.getPayloadType();
     if (payloadType == MC_PAYLOAD_ANON_REQ ||
         payloadType == MC_PAYLOAD_REQUEST ||
-        payloadType == MC_PAYLOAD_RESPONSE) {
+        payloadType == MC_PAYLOAD_RESPONSE ||
+        (isDirect && pkt->getHopCount() == 1)) {
         if (pkt->payloadLen > 0 && pkt->payload[0] == nodeIdentity.getNodeHash()) {
             return false;
         }
@@ -2639,7 +2689,7 @@ bool processTxtMsgCLI(MCPacket* pkt) {
     uint8_t decrypted[128];
     uint16_t decryptedLen = meshCrypto.MACThenDecrypt(
         decrypted, encrypted, encryptedLen,
-        session->sharedSecret, session->sharedSecret);
+        session->sharedSecret, session->sharedSecret, sizeof(decrypted));
 
     if (decryptedLen == 0) {
         LOG(TAG_AUTH " TXT decrypt fail\n\r");
@@ -2805,7 +2855,7 @@ bool processAuthenticatedRequest(MCPacket* pkt) {
     uint8_t decrypted[128];
     uint16_t decryptedLen = meshCrypto.MACThenDecrypt(
         decrypted, encrypted, encryptedLen,
-        session->sharedSecret, session->sharedSecret);
+        session->sharedSecret, session->sharedSecret, sizeof(decrypted));
 
     if (decryptedLen == 0) {
         return false;
@@ -3481,7 +3531,9 @@ void setup() {
     // after flashing and again whenever that file changed - the settings are
     // written to the EEPROM, so nothing has to be typed into the serial console.
     if (applyCompiledUserConfig(false)) {
-        LOG(TAG_CONFIG " User config applied\n\r");
+        // LOG_RAW, not LOG: the LOG macro is compiled out in the quiet-logging
+        // builds (see main.h), so a message there would never be visible.
+        LOG_RAW("[C] User config applied\n\r");
     }
 
     // Effective ADVERT interval, decided last: loadConfig() restored the stored
@@ -3491,9 +3543,9 @@ void setup() {
     // which overwrote the stored interval with the 5 minute default on every
     // reset and made the boot log print the default instead of the real value.
     if (advertGen.getInterval() == 0) advertGen.setInterval(ADVERT_INTERVAL_MS);
-    LOG(TAG_INFO " ADV: %s every %lus\n\r",
-        ADVERT_ENABLED ? "on" : "off",
-        advertGen.getInterval() / 1000);
+    LOG_RAW("[A] ADV: %s every %lus\n\r",
+            ADVERT_ENABLED ? "on" : "off",
+            (unsigned long)(advertGen.getInterval() / 1000));
 
     initLed();
     diagInit();

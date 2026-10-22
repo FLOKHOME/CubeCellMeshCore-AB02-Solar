@@ -163,7 +163,12 @@ void saveConfig() {
     config.maxFloodHops = repeaterHelper.getMaxFloodHops();
     uint32_t advMs = advertGen.getInterval();
     config.advertIntervalMin = (advMs / 60000UL) > 255 ? 255 : (uint8_t)(advMs / 60000UL);
-    config.floodAdvertHrs = floodAdvertIntervalMs > 0 ? (uint8_t)(floodAdvertIntervalMs / 3600000UL) : 0;
+    // Clamp like advertIntervalMin above: a plain (uint8_t) cast wrapped the
+    // value modulo 256, so a longer flood interval changed silently on reload.
+    uint32_t floodHrs = floodAdvertIntervalMs / 3600000UL;
+    config.floodAdvertHrs = (floodAdvertIntervalMs > 0)
+                                ? (uint8_t)(floodHrs > 255 ? 255 : floodHrs)
+                                : 0;
     config.reserved1 = 0;
 
     // Fingerprint of the compiled-in user configuration that produced these

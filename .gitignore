@@ -44,3 +44,4 @@ PROMPT_SIMULATOR.md
 
 # Generated from config/repeater.json by tools/gen_user_config.py
 src/generated/
+tools/hosttest/build/

@@ -108,6 +108,18 @@ public:
         }
         for (uint8_t i = 0; i < MAILBOX_SLOTS; i++) {
             EEPROM.get(MAILBOX_EEPROM_OFFSET + sizeof(MailboxHeader) + i * sizeof(MailboxSlot), slots[i]);
+
+            // A stale or foreign slot length would make isDuplicate()/popFor()
+            // read past pktData[MAILBOX_PKT_MAX]; drop such slots.
+            if (slots[i].pktLen > MAILBOX_PKT_MAX) {
+                slots[i].pktLen = 0;
+            }
+        }
+
+        // The persisted counter must not be believed blindly (it is reported by
+        // "mailbox" and used as the EEPROM occupancy count).
+        if (header.count > MAILBOX_SLOTS) {
+            header.count = MAILBOX_SLOTS;
         }
     }
 

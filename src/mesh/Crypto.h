@@ -61,15 +61,25 @@ private:
      * @param padded Output buffer (must be large enough)
      * @param data Input data
      * @param len Input length
-     * @return Padded length (multiple of 16)
+     * @param maxLen Size of the output buffer
+     * @return Padded length (multiple of 16), or 0 if len > maxLen
      */
-    static uint16_t zeroPad(uint8_t* padded, const uint8_t* data, uint16_t len) {
-        memcpy(padded, data, len);
+    static uint16_t zeroPad(uint8_t* padded, const uint8_t* data, uint16_t len,
+                            uint16_t maxLen) {
+        if (len > maxLen) return 0;  // would overflow the caller's buffer
+
         uint16_t paddedLen = ((len + MC_AES_BLOCK_SIZE - 1) / MC_AES_BLOCK_SIZE) * MC_AES_BLOCK_SIZE;
-        if (paddedLen > len) {
-            memset(padded + len, 0, paddedLen - len);
+        if (paddedLen == 0) {
+            paddedLen = MC_AES_BLOCK_SIZE;
         }
-        return paddedLen > 0 ? paddedLen : MC_AES_BLOCK_SIZE;
+        if (len > 0) {
+            memcpy(padded, data, len);
+        }
+        // Always zero the tail. For len == 0 this initialises the whole block;
+        // previously the function returned 16 without writing anything, so the
+        // encryption sent uninitialised stack memory.
+        memset(padded + len, 0, paddedLen - len);
+        return paddedLen;
     }
 
 public:
@@ -159,9 +169,13 @@ public:
      */
     uint16_t encryptThenMAC(uint8_t* output, const uint8_t* input, uint16_t len,
                             const uint8_t* key, const uint8_t* macKey) {
-        // Pad input to block size
+        // Pad input to block size. Reject anything that does not fit into the
+        // stack buffer; without this check a long input overflowed padded[].
         uint8_t padded[256];
-        uint16_t paddedLen = zeroPad(padded, input, len);
+        uint16_t paddedLen = zeroPad(padded, input, len, sizeof(padded));
+        if (paddedLen == 0) {
+            return 0;
+        }
 
         // Set AES key (first 16 bytes)
         aes.setKey(key, MC_AES_KEY_SIZE);
@@ -193,15 +207,25 @@ public:
      * @param len Input length (including MAC)
      * @param key Decryption key (first 16 bytes of shared secret)
      * @param macKey MAC key (full 32-byte shared secret)
+     * @param maxOutLen Size of the output buffer
      * @return Decrypted length, 0 if MAC failed
      */
     uint16_t MACThenDecrypt(uint8_t* output, const uint8_t* input, uint16_t len,
-                            const uint8_t* key, const uint8_t* macKey) {
+                            const uint8_t* key, const uint8_t* macKey,
+                            uint16_t maxOutLen = 128) {
         if (len < MC_CIPHER_MAC_SIZE + MC_AES_BLOCK_SIZE) {
             return 0;  // Too short
         }
 
         uint16_t cipherLen = len - MC_CIPHER_MAC_SIZE;
+
+        // Bound the output write. Without this check a crafted ANON_REQ payload
+        // overflowed the 128 byte stack buffers in decryptAnonReq() and the two
+        // callers in main.cpp (cipherLen reached ~145 there).
+        if (cipherLen > maxOutLen) {
+            return 0;  // Would overflow the output buffer
+        }
+
         const uint8_t* mac = input;
         const uint8_t* ciphertext = &input[MC_CIPHER_MAC_SIZE];
 
@@ -212,10 +236,14 @@ public:
 
         aes.setKey(key, MC_AES_KEY_SIZE);
 
-        // Decrypt blocks (ECB mode - each block independently)
+        // Decrypt whole blocks only (ECB mode - each block independently).
+        // The previous loop also ran for a partial trailing block, which wrote a
+        // full 16 byte block past the end of the output buffer and read past the
+        // end of the input. Genuine packets are always block aligned, so this
+        // only changes the treatment of malformed/crafted input.
         uint16_t pos = 0;
 
-        while (pos < cipherLen) {
+        while ((uint16_t)(pos + MC_AES_BLOCK_SIZE) <= cipherLen) {
             // Decrypt block directly (ECB = no chaining)
             aes.decryptBlock(&output[pos], &ciphertext[pos]);
             pos += MC_AES_BLOCK_SIZE;
@@ -223,8 +251,8 @@ public:
 
         aes.clear();
 
-        // Return decrypted length
-        return cipherLen;
+        // Return the number of bytes actually written
+        return pos;
     }
 
     /**
@@ -265,7 +293,7 @@ public:
 
         uint8_t decrypted[128];
         uint16_t decryptedLen = MACThenDecrypt(decrypted, encrypted, encryptedLen,
-                                                secret, secret);
+                                                secret, secret, sizeof(decrypted));
         memset(secret, 0, MC_SHARED_SECRET_SIZE);
 
         if (decryptedLen == 0) {
@@ -466,13 +494,20 @@ public:
 
         int slot = (existingSlot >= 0) ? existingSlot : freeSlot;
         if (slot < 0) {
-            // No free slots, find oldest
+            // No free slot: reuse the oldest session, but never an admin one.
+            // Otherwise anyone who knows the guest password can evict the
+            // administrator simply by logging in repeatedly. Are all slots held
+            // by admins, the login is rejected instead.
             uint32_t oldest = 0xFFFFFFFF;
             for (int i = 0; i < MAX_CLIENT_SESSIONS; i++) {
-                if (sessions[i].lastActivity < oldest) {
+                if (sessions[i].permissions != PERM_ACL_ADMIN &&
+                    sessions[i].lastActivity < oldest) {
                     oldest = sessions[i].lastActivity;
                     slot = i;
                 }
+            }
+            if (slot < 0) {
+                return 0;  // every slot belongs to an admin
             }
         }
 

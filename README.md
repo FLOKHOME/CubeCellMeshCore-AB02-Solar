@@ -93,6 +93,16 @@ Beim ersten Start übernimmt die Firmware die Werte automatisch und speichert si
 
 Speicherbedarf des Beispiel-Builds mit Konfigurationsdatei: **128.544 / 131.072 B Flash (98,1 %)**, 9.624 B RAM. Details: [Konfiguration, Regionen und EEPROM](docs/AB02/CONFIGURATION.md).
 
+## Tests
+
+- **Konfigurationsdatei:** `python3 tools/test_user_config.py` prüft `config/repeater.json` (Wertebereiche, Regionsregeln, Fehlerfälle).
+- **Krypto/Netz:** `tools/hosttest/run.sh` kompiliert die *echten* Header (`src/mesh/Crypto.h`) gegen die portable Crypto-Bibliothek auf dem PC. Mit `tools/hosttest/run.sh 52f108d` läuft derselbe Test zusätzlich gegen einen älteren Commit — damit sind Fehler wie der Pufferüberlauf in `MACThenDecrypt` reproduzierbar statt nur behauptet:
+
+  ```text
+  === fixed ===            oversized packet: cipherLen=145, return=0,   canary intact=yes
+  === base-52f108d ===     oversized packet: cipherLen=145, return=145, canary intact=NO
+  ```
+
 ## Serielle Regionskonfiguration
 
 Die aktuelle CubeCell-Implementierung verwaltet eine separat vorhandene Wildcard und **fünf benannte Regionen**. Die Einträge sind **flach**: Ein vermeintlicher Parent-Parameter aus einem JSON-Profil wird von dieser Firmware **nicht als Regionshierarchie interpretiert**.
