@@ -10,6 +10,222 @@
 #include "core/Config.h"
 
 //=============================================================================
+// HTCC-AB02 minimal SH1107 128x64 text status, on USER press for 10 seconds.
+// Uses only Wire and a 5x7 fixed bitmap font (no full DISPLAY graphics library).
+// Based on display init/rotation described in Heltec HT_SH1107Wire.h.
+//=============================================================================
+// Minimal open-drain, software-driven I2C for onboard SH1107 OLED.
+// SDA/SCL must have working external pull-up resistors on the AB02 board.
+// Releasing uses INPUT, driving LOW uses OUTPUT; never drive I2C HIGH.
+static inline void diagSda(bool releaseLine) {
+    if (releaseLine) pinMode(SDA, INPUT);
+    else { digitalWrite(SDA, LOW); pinMode(SDA, OUTPUT); }
+}
+static inline void diagScl(bool releaseLine) {
+    if (releaseLine) pinMode(SCL, INPUT);
+    else { digitalWrite(SCL, LOW); pinMode(SCL, OUTPUT); }
+}
+static inline void diagBusDelay() { delayMicroseconds(5); }
+static void diagBusStart() {
+    diagSda(true); diagScl(true); diagBusDelay();
+    diagSda(false); diagBusDelay(); diagScl(false);
+}
+static void diagBusByte(uint8_t value) {
+    for (uint8_t bit = 0; bit < 8; ++bit) {
+        diagSda((value & 0x80) != 0);
+        diagBusDelay(); diagScl(true); diagBusDelay(); diagScl(false);
+        value <<= 1;
+    }
+    // Acknowledge cycle; only master writes, no readback needed here.
+    diagSda(true); diagBusDelay(); diagScl(true); diagBusDelay(); diagScl(false);
+}
+static void diagBusStop() {
+    diagSda(false); diagBusDelay(); diagScl(true); diagBusDelay();
+    diagSda(true); diagBusDelay();
+}
+
+static uint8_t diagFb[1024];  // Transposed frame: [x / 8][y], bit (x % 8)
+static volatile bool diagButtonPressed = false;
+static bool diagDisplayActive = false;
+static uint32_t diagDisplayUntil = 0;
+static uint32_t diagLastRefresh = 0;
+static uint32_t diagLastPress = 0;
+static const char diagAlphabet[] = " 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ:-./%";
+static const uint8_t diagGlyph[][5] = {
+    {0x00, 0x00, 0x00, 0x00, 0x00}, // SPACE
+    {0x3E, 0x51, 0x49, 0x45, 0x3E}, // 0
+    {0x00, 0x42, 0x7F, 0x40, 0x00}, // 1
+    {0x42, 0x61, 0x51, 0x49, 0x46}, // 2
+    {0x21, 0x41, 0x45, 0x4B, 0x31}, // 3
+    {0x18, 0x14, 0x12, 0x7F, 0x10}, // 4
+    {0x27, 0x45, 0x45, 0x45, 0x39}, // 5
+    {0x3C, 0x4A, 0x49, 0x49, 0x30}, // 6
+    {0x01, 0x71, 0x09, 0x05, 0x03}, // 7
+    {0x36, 0x49, 0x49, 0x49, 0x36}, // 8
+    {0x06, 0x49, 0x49, 0x29, 0x1E}, // 9
+    {0x7E, 0x11, 0x11, 0x11, 0x7E}, // A
+    {0x7F, 0x49, 0x49, 0x49, 0x36}, // B
+    {0x3E, 0x41, 0x41, 0x41, 0x22}, // C
+    {0x7F, 0x41, 0x41, 0x22, 0x1C}, // D
+    {0x7F, 0x49, 0x49, 0x49, 0x41}, // E
+    {0x7F, 0x09, 0x09, 0x09, 0x01}, // F
+    {0x3E, 0x41, 0x49, 0x49, 0x7A}, // G
+    {0x7F, 0x08, 0x08, 0x08, 0x7F}, // H
+    {0x00, 0x41, 0x7F, 0x41, 0x00}, // I
+    {0x20, 0x40, 0x41, 0x3F, 0x01}, // J
+    {0x7F, 0x08, 0x14, 0x22, 0x41}, // K
+    {0x7F, 0x40, 0x40, 0x40, 0x40}, // L
+    {0x7F, 0x02, 0x0C, 0x02, 0x7F}, // M
+    {0x7F, 0x04, 0x08, 0x10, 0x7F}, // N
+    {0x3E, 0x41, 0x41, 0x41, 0x3E}, // O
+    {0x7F, 0x09, 0x09, 0x09, 0x06}, // P
+    {0x3E, 0x41, 0x51, 0x21, 0x5E}, // Q
+    {0x7F, 0x09, 0x19, 0x29, 0x46}, // R
+    {0x46, 0x49, 0x49, 0x49, 0x31}, // S
+    {0x01, 0x01, 0x7F, 0x01, 0x01}, // T
+    {0x3F, 0x40, 0x40, 0x40, 0x3F}, // U
+    {0x1F, 0x20, 0x40, 0x20, 0x1F}, // V
+    {0x3F, 0x40, 0x38, 0x40, 0x3F}, // W
+    {0x63, 0x14, 0x08, 0x14, 0x63}, // X
+    {0x07, 0x08, 0x70, 0x08, 0x07}, // Y
+    {0x61, 0x51, 0x49, 0x45, 0x43}, // Z
+    {0x00, 0x36, 0x36, 0x00, 0x00}, // :
+    {0x08, 0x08, 0x08, 0x08, 0x08}, // -
+    {0x00, 0x60, 0x60, 0x00, 0x00}, // .
+    {0x20, 0x10, 0x08, 0x04, 0x02}, // /
+    {0x63, 0x13, 0x08, 0x64, 0x63}, // %
+};
+
+static void diagUserInterrupt() { diagButtonPressed = true; }
+
+static void diagCmd(uint8_t b) {
+    diagBusStart();
+    diagBusByte(0x78);  // 7-bit OLED address 0x3C + write bit
+    diagBusByte(0x00);  // command control byte
+    diagBusByte(b);
+    diagBusStop();
+}
+
+static void diagPixel(uint8_t x, uint8_t y) {
+    if (x < 128 && y < 64) diagFb[(x >> 3) * 64 + y] |= (uint8_t)(1U << (x & 7));
+}
+
+static void diagText(uint8_t x, uint8_t y, const char* s) {
+    while (*s && x < 122) {
+        char c = *s++;
+        if (c >= 'a' && c <= 'z') c -= 32;
+        const char* p = strchr(diagAlphabet, c);
+        const uint8_t* glyph = diagGlyph[p ? p - diagAlphabet : 0];
+        for (uint8_t column = 0; column < 5; ++column)
+            for (uint8_t row = 0; row < 7; ++row)
+                if (glyph[column] & (1U << row)) diagPixel(x + column, y + row);
+        x += 6;
+    }
+}
+
+static void diagFlush() {
+    // Matches Heltec's 0-degree SH1107Wire transpose/page organization.
+    for (uint8_t page = 0; page < 16; ++page) {
+        diagCmd(0xb0 + page);
+        diagCmd(0x10);
+        diagCmd(0x00);
+        // No Wire TX buffer limit; write the full 64-byte page.
+        diagBusStart();
+        diagBusByte(0x78);
+        diagBusByte(0x40);  // OLED data control byte
+        for (uint8_t i = 0; i < 64; ++i) diagBusByte(diagFb[page * 64 + i]);
+        diagBusStop();
+    }
+}
+
+static void diagDraw() {
+    char line[40];
+    memset(diagFb, 0, sizeof(diagFb));
+    diagText(0, 0, "MESHCORE AB02");
+    diagText(0, 10, nodeIdentity.getNodeName());
+    snprintf(line, sizeof(line), "RX %lu TX %lu", (unsigned long)rxCount, (unsigned long)txCount);
+    diagText(0, 20, line);
+    snprintf(line, sizeof(line), "FWD %lu", (unsigned long)fwdCount);
+    diagText(0, 30, line);
+    snprintf(line, sizeof(line), "%s UP %lus", timeSync.isSynchronized() ? "SYNC" : "NO SYNC",
+             (unsigned long)(millis() / 1000));
+    diagText(0, 40, line);
+    telemetry.update();
+    snprintf(line, sizeof(line), "BAT %dmV %d%%", telemetry.getBatteryMv(), telemetry.getBatteryPercent());
+    diagText(0, 50, line);
+    diagFlush();
+}
+
+static void diagStart() {
+    digitalWrite(Vext, LOW);   // Vext ON, active low
+    delay(80);
+    pinMode(GPIO10, OUTPUT);   // OLED hardware reset
+    digitalWrite(GPIO10, LOW);
+    delay(10);
+    digitalWrite(GPIO10, HIGH);
+    delay(10);
+    // Set I2C idle/high by releasing both open-drain lines.
+    diagSda(true);
+    diagScl(true);
+    static const uint8_t initSeq[] = {
+        0xae,0xa1,0xc0,0xd3,0x60,0xa8,0x3f,0xd5,0x51,0xdc,0x00,0x20,
+        0x81,0x90,0xa4,0xa6,0xad,0x8a,0xd9,0x22,0xdb,0x35,0xaf
+    };
+    for (uint8_t i = 0; i < sizeof(initSeq); ++i) diagCmd(initSeq[i]);
+    diagDisplayActive = true;
+    diagDisplayUntil = millis() + 10000UL;
+    LOG_RAW("[OLED] ON (10s)\n");
+    diagLastRefresh = millis();
+    diagDraw();
+}
+
+static void diagStop() {
+    diagCmd(0xae);
+    diagBusStop();  // release lines before powering down OLED
+    // Avoid back-powering a powered-down OLED through I2C/reset pins.
+    pinMode(SDA, INPUT);
+    pinMode(SCL, INPUT);
+    pinMode(GPIO10, INPUT);
+    digitalWrite(Vext, HIGH);
+    diagDisplayActive = false;
+    LOG_RAW("[OLED] OFF (timeout)\n");
+}
+
+static void diagInit() {
+    pinMode(Vext, OUTPUT);
+    digitalWrite(Vext, HIGH);
+    // Use the original board input mode, confirmed working before timeout fix.
+    // HTCC-AB02's USER button already has an on-board pull-up.
+    pinMode(P3_3, INPUT);
+    attachInterrupt(P3_3, diagUserInterrupt, FALLING);
+}
+
+static void diagService() {
+    const uint32_t now = millis();
+    // Capture the interrupt atomically. A short USER press may have ended
+    // before loop() checks the pin, so do not sample its level here.
+    noInterrupts();
+    const bool pressed = diagButtonPressed;
+    diagButtonPressed = false;
+    interrupts();
+    // Start only once per press. Never extend the original 10-second timer.
+    if (pressed && !diagDisplayActive &&
+        (uint32_t)(now - diagLastPress) >= 300UL) {
+        diagLastPress = now;
+        diagStart();
+    }
+    if (diagDisplayActive) {
+        if ((int32_t)(millis() - diagDisplayUntil) >= 0) {
+            diagStop();
+        } else if ((uint32_t)(millis() - diagLastRefresh) >= 1000UL) {
+            diagLastRefresh = millis();
+            diagDraw();
+        }
+    }
+}
+
+
+//=============================================================================
 // Forward declarations
 //=============================================================================
 #ifndef LITE_MODE
@@ -3211,6 +3427,7 @@ void setup() {
     regionMap.load();
 
     initLed();
+    diagInit();
     packetCache.clear();
     txQueue.clear();
     seenNodes.clear();
@@ -3227,6 +3444,7 @@ void setup() {
 
 void loop() {
     feedWatchdog();
+    diagService();
 
     // Auto-expire temporary radio settings
     // Use signed subtraction to handle millis() wraparound correctly
@@ -3434,7 +3652,7 @@ void loop() {
         // Skip deep sleep during boot safe period (allows serial commands)
         bool inBootSafe = (millis() - bootTime) < BOOT_SAFE_PERIOD_MS;
 
-        if (deepSleepEnabled && powerSaveMode >= 1 && !inBootSafe) {
+        if (deepSleepEnabled && powerSaveMode >= 1 && !inBootSafe && !diagDisplayActive) {
             enterDeepSleep();
         } else {
             uint8_t sleepMs = (powerSaveMode == 0) ? 5 : (inBootSafe ? 5 : 20);

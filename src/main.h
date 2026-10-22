@@ -8,7 +8,7 @@
  * Based on MeshCore protocol: https://github.com/meshcore-dev/MeshCore
  */
 
-#define FIRMWARE_VERSION    "0.7.0-ph123"
+#define FIRMWARE_VERSION    "0.7.0-ph123-oled"
 
 //=============================================================================
 // Configuration
@@ -88,7 +88,7 @@
 #define MC_RX_BOOST_ENABLED     false
 
 // LED signaling
-#define MC_SIGNAL_NEOPIXEL      // Use NeoPixel for status
+//#define MC_SIGNAL_NEOPIXEL      // Disabled: diagnostic OLED uses Vext
 //#define MC_SIGNAL_GPIO13      // Use GPIO13 LED (HTCC-AB02A)
 
 //=============================================================================
