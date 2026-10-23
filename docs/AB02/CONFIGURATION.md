@@ -1,6 +1,6 @@
 # Konfiguration, Regionen und EEPROM – HTCC-AB02
 
-**Stand: 22.10.2026 · Release `v0.8.0` (`main`, Firmwarekennung `0.8.0`)**
+**Stand: 23.10.2026 · Release `v0.8.2` (`main`, Firmwarekennung `0.8.2`)**
 
 ## Zentrale Konfigurationsdatei `config/repeater.json`
 
@@ -17,10 +17,11 @@ Die Datei wird **beim Kompilieren** von `tools/gen_user_config.py` gelesen, vali
 | `radio.spreading_factor` | 5–12, `MC_SPREADING` |
 | `radio.coding_rate` | 5–8 (4/5 … 4/8), `MC_CODING_RATE` |
 | `radio.tx_power_dbm` | −9…22 dBm, `MC_TX_POWER` |
-| `advertising.local_interval_minutes` | 1–240; ADVERT-Intervall |
-| `advertising.flood_interval_hours` | `0` = aus, sonst 3–48 (getrenntes Flood-ADVERT) |
+| `advertising.local_interval_minutes` | 1–240; ADVERT-Intervall, Vorgabe **120** (2 h) |
+| `advertising.flood_interval_hours` | `0` = aus, sonst 3–48 (getrenntes Flood-ADVERT), Vorgabe **6** |
 | `regions.allow` | 1–5 benannte Regionen (max. 11 Zeichen) plus optional `*`; ersetzt die gespeicherte Liste vollständig |
 | `regions.deny_flood` | Namen aus `allow`, die Flood verweigern (`D`); `*` nur statt, nicht zusätzlich zu `allow` |
+| `regions.default` | Heimatregion des Repeaters (max. 11 Zeichen, muss in `allow` stehen); scope für **eigene ADVERTs**, leer = ungescoped |
 | `network.max_flood_hops` | 1–15 |
 | `network.loop_detect` | 0=aus, 1=minimal, 2=moderat, 3=strikt |
 | `network.auto_add_max_hops` | 0–64, `0` = kein Limit |
@@ -45,6 +46,36 @@ config apply      -> erzwingt erneutes Anwenden (überschreibt manuelle Änderun
 Nach dem Update auf diese Firmware zeigt `config` einmalig `stored:stale`, bis `config apply` gelaufen ist oder der erste Start das Anwenden erledigt hat. Radio-Parameter sind Kompilierzeit-Konstanten und daher nicht per `radio`/`tempradio` veränderbar; alles andere lässt sich weiterhin zur Laufzeit überschreiben.
 
 **Ohne `config/repeater.json`** (oder ohne Python) baut die Firmware unverändert mit den eingebauten Vorgaben; der Generator schreibt dann nur einen Stub.
+
+## Regionen: Allow-Liste und Heimatregion
+
+Zwei Begriffe, die leicht verwechselt werden:
+
+- **`regions.allow`** ist die Weiterleitungs-Policy. Sie bestimmt, welche regional gescopten Flood-Pakete der Repeater annimmt und weiterleitet. Der Wildcard-Eintrag `*` schaltet die Regionenfilterung praktisch ab: Pakete ohne Treffer in der Allow-Liste werden trotzdem gefloodet. `deny_flood` nimmt einzelne Namen wieder aus.
+- **`regions.default`** ist die **Heimatregion** und betrifft nur Pakete, die der Repeater **selbst** erzeugt (v. a. ADVERTs). Der Repeater berechnet den 4-Byte-Transport-Code über das fertige Paket und stellt den Header auf den Transport-Routentyp um; beim Serialisieren steht der Code dann vor `pathLen`. Ohne diese Angabe werden eigene ADVERTs ungescoped gefloodet. Der Name muss in `allow` stehen, sonst bricht der Build mit Klartextmeldung ab.
+
+Für ein Solar-Gerät im Feld ist die übliche Kombination:
+
+```json
+"regions": { "allow": ["*", "de-mitte"], "deny_flood": [], "default": "de-mitte" }
+```
+
+Damit wird fremder Verkehr aus allen Regionen weitergeleitet, während eigene ADVERTs sauber in `de-mitte` laufen. `region` auf der Konsole zeigt beides getrennt (`*:A` / `de-mitte:A`).
+
+## Vorgaben für den Solarbetrieb (ab `v0.8.2`)
+
+Die ausgelieferten Vorgaben sind auf Dauerbetrieb mit kleiner Zelle ausgelegt:
+
+| Feld | Wert | Begründung |
+| --- | --- | --- |
+| `power.deep_sleep` | `true` | Repeater schläft zwischen den Empfangsfenstern; die Konsole ist dann stumm, das ist normal |
+| `power.power_saving` | `1` | balanced: Empfangsfenster groß genug für Mesh-Verkehr, ohne dauerhaft wach zu sein |
+| `power.rx_boost` | `false` | spart Strom; nur bei sehr schwacher Gegenstelle sinnvoll |
+| `advertising.local_interval_minutes` | `120` | ein ADVERT alle 2 h genügt, um in der App sichtbar zu bleiben |
+| `advertising.flood_interval_hours` | `6` | zusätzliches Flood-ADVERT alle 6 h für die Netzweite |
+| `radio.tx_power_dbm` | `21` | Hardware-Maximum; bei schlechter Abdeckung bewusst ausgereizt |
+
+Wer die Konsole bei aktivem Deep Sleep braucht, weckt das Gerät über den USER-Taster (boot-safe window) oder setzt vorübergehend `power.deep_sleep` auf `false`.
 
 ## ADVERT-Intervall
 

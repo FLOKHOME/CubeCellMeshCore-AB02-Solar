@@ -2,6 +2,35 @@
 
 Dieses Changelog beschreibt **Entwicklungsstände dieses Community-Forks**, nicht offizielle MeshCore-Releases. Die Originalhistorie von [atomozero/CubeCellMeshCore](https://github.com/atomozero/CubeCellMeshCore) steht in [`docs/UPSTREAM_README.md`](docs/UPSTREAM_README.md) und in der Git-Historie.
 
+## [v0.8.2] – 23.10.2026
+
+**Heimatregion konfigurierbar, Solar-Vorgaben als Standard.** Der Repeater kann jetzt über `config/repeater.json` festlegen, in welcher Region er selbst sendet, während die Weiterleitung unverändert über die Allow-Liste läuft. Die ausgelieferten Vorgaben sind auf Dauerbetrieb mit kleiner Solarzelle eingestellt. **Auf HTCC-AB02 verifiziert.**
+
+### Added
+
+- **`regions.default` in `config/repeater.json`.** Eigene ADVERTs werden mit dem 4-Byte-Transport-Code dieser Region gesendet, statt ungescoped zu flooden. `RegionMap::getTransportCode()` berechnet den Code über das fertige Paket; der Header wird auf den Transport-Routentyp umgestellt. Fehlt der Eintrag, bleibt das bisherige Verhalten (ungescoped) erhalten. Der Name muss in `regions.allow` stehen — sonst bricht der Build mit Klartextmeldung ab. Die Generatorausgabe landet als `USERCFG_DEFAULT_REGION` in `UserConfigData.h`.
+- **Dokumentation der Regionen-Begriffe.** Neuer Abschnitt in `docs/AB02/CONFIGURATION.md` erklärt Allow-Liste vs. Heimatregion und die Kombination `*` + `de-mitte`.
+
+### Changed
+
+- **Solar-Vorgaben als Standard.** `config/repeater.json` liefert jetzt `local_interval_minutes: 120` (2 h) und `flood_interval_hours: 6`, `deep_sleep: true`, `power_saving: 1`, `rx_boost: false`. Damit ist ein frisch geflashtes Gerät ohne weitere Konfiguration für den Batterie-/Solarbetrieb geeignet.
+- Firmwarekennung auf **`0.8.2`** gesetzt (`ver`, Boot-Banner).
+
+### Verified on hardware (HTCC-AB02)
+
+- `region` → `*:A`, `de-mitte:A` nach Flash und RESET erhalten.
+- `advert local` und `advert` → `TX ok`, `ADV:2/0`.
+- Konfig-Tests `python3 tools/test_user_config.py` → **18/18**.
+
+### Build
+
+- **129.240 / 131.072 B Flash (98,6 %)**, **9.632 / 16.384 B RAM (58,8 %)**, `SUCCESS`, keine Warnungen. Reserve: **1.832 B**.
+
+### Still open
+
+- Feldtest über das Wochenende: erscheint der Knoten nach dem Fallback in der App, und wächst `ADV:tx` in `stats`?
+- Regionen nach Store-and-Forward, gerichteter Ping über 2+ Hops (unverändert offen aus v0.8.0).
+
 ## [v0.8.1] – 22.10.2026
 
 **Sichtbarkeit ohne Zeitquelle.** Behebt den Zirkelschluss, durch den ein Repeater ohne Zeit-Sync dauerhaft unsichtbar blieb, und macht den ADVERT-Takt über einen RESET hinweg stabil. Noch **nicht auf Hardware verifiziert** — der Build ist sauber, die Logik ist aber nur im Code geprüft.

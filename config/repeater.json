@@ -17,8 +17,8 @@
   },
   "advertising": {
     "_comment": "local_interval_minutes: ADVERT-Intervall (1-240). flood_interval_hours: zusaetzliches Flood-ADVERT (0=aus, 3-48).",
-    "local_interval_minutes": 2,
-    "flood_interval_hours": 3
+    "local_interval_minutes": 120,
+    "flood_interval_hours": 6
   },
   "regions": {
     "_comment": "Wird beim Anwenden vollstaendig neu gesetzt. '*' = Wildcard: Flood-Pakete ohne Regionstreffer werden weitergeleitet. Fehlt '*', werden solche Pakete verworfen. Namen max. 11 Zeichen, max. 5 benannte Regionen. 'default' ist die Heimatregion fuer eigene ADVERTs; muss in 'allow' stehen.",
