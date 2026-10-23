@@ -2022,6 +2022,30 @@ void sendAdvert(bool flood) {
         return;
     }
 
+    // Encode the configured path hash size in the top two bits of pathLen.
+    // 0 = 1 byte, 1 = 2 bytes, 2 = 3 bytes. The hop count stays 0 because an
+    // ADVERT originates here; forwarders append hashes of the same size.
+    // MeshCore >=1.14 reads this and 1-byte hashes collide in larger meshes.
+    pkt.pathLen = ((USERCFG_PATH_HASH_MODE & 0x03) << 6);
+
+    // Scope the repeater's own ADVERT to its default/home region. Without this
+    // the advert floods unscoped and the region allow-list cannot route it.
+    // Switching the header to a transport route type makes serialize() write
+    // the 4-byte transport code in front of pathLen.
+    if (USERCFG_DEFAULT_REGION[0]) {
+        uint16_t code = 0;
+        if (regionMap.getTransportCode(USERCFG_DEFAULT_REGION, &pkt, &code)) {
+            pkt.transport_codes[0] = code;
+            pkt.transport_codes[1] = 0;
+            uint8_t rt = pkt.header.getRouteType();
+            if (rt == MC_ROUTE_FLOOD) rt = MC_ROUTE_TRANSPORT_FLOOD;
+            else if (rt == MC_ROUTE_DIRECT) rt = MC_ROUTE_TRANSPORT_DIRECT;
+            pkt.header.raw = (uint8_t)((pkt.header.raw & 0xFC) | (rt & MC_HEADER_ROUTE_MASK));
+        } else {
+            LOG(TAG_ERROR " ADV region %s not configured\n\r", USERCFG_DEFAULT_REGION);
+        }
+    }
+
     LOG(TAG_ADVERT " %s %s\n\r",
         flood ? "flood" : "local",
         nodeIdentity.getNodeName());

@@ -46,6 +46,17 @@
 // fallback for a build without a configuration file.
 #include "generated/UserConfigData.h"
 
+// Builds without config/repeater.json get the empty stub, which does not define
+// this. Keep the old 1-byte behaviour as the fallback so such builds compile.
+#ifndef USERCFG_PATH_HASH_MODE
+#define USERCFG_PATH_HASH_MODE 0
+#endif
+
+// Same fallback for the default/home region of the repeater's own ADVERTs.
+#ifndef USERCFG_DEFAULT_REGION
+#define USERCFG_DEFAULT_REGION ""
+#endif
+
 #if defined(MC_REGION_EU868) && !defined(MC_FREQUENCY)
     #define MC_FREQUENCY        869.618f    // MHz - EU/UK Narrow (MeshCore app)
     #define MC_BANDWIDTH        62.5f       // kHz (narrow)
@@ -318,8 +329,14 @@ extern uint32_t systime;
 // their app) still learn the public key. The timestamp in that packet is
 // uptime-based and strict peers may reject it, but being discoverable beats
 // being invisible on a solar site that cannot be opened without tools.
+// Overridable at build time (-DADVERT_FALLBACK_NO_SYNC_MS=60000UL) so the
+// fallback path can be exercised on the bench without waiting two hours.
+#ifndef ADVERT_FALLBACK_NO_SYNC_MS
 #define ADVERT_FALLBACK_NO_SYNC_MS  7200000UL  // First fallback after 2 h without sync
+#endif
+#ifndef ADVERT_FALLBACK_INTERVAL_MS
 #define ADVERT_FALLBACK_INTERVAL_MS 3600000UL  // Then once per hour
+#endif
 // Do not re-announce immediately after a reset when the last ADVERT is younger
 // than this; the schedule is restored from EEPROM instead.
 #define ADVERT_POST_SYNC_MIN_AGE_MS 600000UL   // 10 minutes

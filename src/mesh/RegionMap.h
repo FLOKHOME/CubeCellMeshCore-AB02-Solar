@@ -80,6 +80,22 @@ public:
         return &_wildcard;
     }
 
+    /**
+     * Compute the transport code for a named region over an already built
+     * packet. Used to scope the repeater's own transmissions (ADVERTs) to its
+     * default/home region. Returns false when the region is not configured.
+     */
+    bool getTransportCode(const char* name, const MCPacket* pkt, uint16_t* code) {
+        if (!name || !name[0] || !pkt || !code) return false;
+        for (uint8_t i = 0; i < _count; i++) {
+            if (strncmp(_entries[i].name, name, REGION_NAME_LEN - 1) == 0) {
+                *code = calcTransportCode(_entries[i].key, pkt);
+                return true;
+            }
+        }
+        return false;
+    }
+
     // Add or update a region entry.
     // The name is truncated to the persisted length first: the transport key is
     // derived from the name, so a name that is stored truncated would derive a

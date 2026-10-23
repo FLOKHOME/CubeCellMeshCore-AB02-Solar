@@ -83,8 +83,9 @@ DEFAULTS = {
         "preamble_len": 16,
     },
     "advertising": {"local_interval_minutes": 120, "flood_interval_hours": 6},
-    "regions": {"allow": ["*"], "deny_flood": []},
-    "network": {"max_flood_hops": 8, "loop_detect": 3, "auto_add_max_hops": 0},
+    "regions": {"allow": ["*"], "deny_flood": [], "default": ""},
+    "network": {"max_flood_hops": 8, "loop_detect": 3, "auto_add_max_hops": 0,
+                "path_hash_mode": 2},
     "power": {"power_saving": 1, "deep_sleep": True, "rx_boost": False},
     "security": {"admin_password": "", "guest_password": ""},
 }
@@ -196,6 +197,8 @@ def validate(raw):
 
     allow = _get(raw, "regions.allow", DEFAULTS["regions"]["allow"])
     deny = _get(raw, "regions.deny_flood", DEFAULTS["regions"]["deny_flood"])
+    default_region = _string(_get(raw, "regions.default", DEFAULTS["regions"]["default"]),
+                             "regions.default", MAX_REGION_NAME_LEN)
     if not isinstance(allow, list) or not isinstance(deny, list):
         raise ConfigError("regions.allow and regions.deny_flood must be JSON arrays")
 
@@ -232,7 +235,11 @@ def validate(raw):
         if name not in deny_entries:
             deny_entries.append(name)
 
-    cfg["regions"] = {"names": names, "wildcard": wildcard, "deny": deny_entries}
+    if default_region and default_region not in names:
+        raise ConfigError(
+            f"regions.default: region {default_region!r} is not listed in regions.allow")
+    cfg["regions"] = {"names": names, "wildcard": wildcard, "deny": deny_entries,
+                      "default": default_region}
 
     n = DEFAULTS["network"]
     cfg["network"] = {
@@ -242,6 +249,10 @@ def validate(raw):
                             "network.loop_detect", 0, 3, integer=True),
         "auto_add_max_hops": _num(_get(raw, "network.auto_add_max_hops", n["auto_add_max_hops"]),
                                   "network.auto_add_max_hops", 0, 64, integer=True),
+        # 0 = 1 byte, 1 = 2 bytes, 2 = 3 bytes. MeshCore expects this in the
+        # top two bits of pathLen; 1-byte hashes collide in larger meshes.
+        "path_hash_mode": _num(_get(raw, "network.path_hash_mode", n["path_hash_mode"]),
+                               "network.path_hash_mode", 0, 2, integer=True),
     }
 
     p = DEFAULTS["power"]
@@ -317,11 +328,13 @@ def emit_header(cfg, fp):
         f'#define USERCFG_WILDCARD {1 if cfg["regions"]["wildcard"] else 0}',
         f'#define USERCFG_REGION_COUNT {len(cfg["regions"]["names"])}',
         f'#define USERCFG_DENY_COUNT {len(cfg["regions"]["deny"])}',
+        f'#define USERCFG_DEFAULT_REGION "{cfg["regions"]["default"]}"',
         "",
         "// Forwarding / loop detection",
         f'#define USERCFG_MAX_FLOOD_HOPS {cfg["network"]["max_flood_hops"]}',
         f'#define USERCFG_LOOP_DETECT {cfg["network"]["loop_detect"]}',
         f'#define USERCFG_AUTOADD_MAXHOPS {cfg["network"]["auto_add_max_hops"]}',
+        f'#define USERCFG_PATH_HASH_MODE {cfg["network"]["path_hash_mode"]}',
         "",
         "// Power",
         f'#define USERCFG_POWER_SAVING {cfg["power"]["power_saving"]}',
