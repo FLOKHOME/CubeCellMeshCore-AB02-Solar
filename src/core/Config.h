@@ -70,5 +70,8 @@ void statsRecordLogin();
 void statsRecordLoginFail();
 void statsRecordRateLimited();
 void statsSetFirstBootTime(uint32_t unixTime);
+// Remember/restore the time of the last ADVERT we sent (Unix time, 0=unknown).
+void statsSetLastAdvertUnix(uint32_t unixTime);
+uint32_t statsGetLastAdvertUnix();
 uint32_t statsGetTotalUptime();
 const PersistentStats* getPersistentStats();

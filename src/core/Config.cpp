@@ -368,6 +368,19 @@ void statsSetFirstBootTime(uint32_t unixTime) {
 }
 
 /**
+ * Remember when the last ADVERT was sent. The value is written to the EEPROM by
+ * the regular stats save cycle (every 30 min), so after a reset the schedule is
+ * restored with at most one save interval of drift - early, never late.
+ */
+void statsSetLastAdvertUnix(uint32_t unixTime) {
+    persistentStats.lastAdvertUnix = unixTime;
+}
+
+uint32_t statsGetLastAdvertUnix() {
+    return persistentStats.lastAdvertUnix;
+}
+
+/**
  * Get current uptime including session
  */
 uint32_t statsGetTotalUptime() {

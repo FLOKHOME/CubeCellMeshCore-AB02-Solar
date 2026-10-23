@@ -2034,6 +2034,11 @@ void sendAdvert(bool flood) {
         LOG(TAG_ADVERT " TX ok\n\r");
         advertGen.markSent();
         advTxCount++;
+        // Remember the send time so the schedule survives a reset. Only
+        // meaningful with a valid clock; without one the fallback timer runs.
+        if (timeSync.isSynchronized()) {
+            statsSetLastAdvertUnix(timeSync.getTimestamp());
+        }
     } else {
         LOG(TAG_ADVERT " TX fail\n\r");
     }
@@ -2387,7 +2392,29 @@ void checkAdvertBeacon() {
         return;  // Don't send another one immediately
     }
 
-    if (!timeSync.isSynchronized()) return;
+    if (!timeSync.isSynchronized()) {
+        // Deadlock guard. This used to be a plain "return", so a node that never
+        // receives a valid timestamp stays silent forever: it sends no ADVERT,
+        // no peer learns its public key, and it cannot even be reached over the
+        // air to fix the problem. On a solar site in a sealed enclosure there is
+        // no button to press and no serial port to connect, so that state is a
+        // total loss. Send a zero-hop ADVERT anyway after a grace period; the
+        // timestamp is uptime-based and strict peers may ignore the packet, but
+        // direct neighbours still learn the key and can query the node.
+        uint32_t now = millis();
+        bool due;
+        if (lastFallbackAdvertTime == 0) {
+            due = (now - bootTime) >= ADVERT_FALLBACK_NO_SYNC_MS;
+        } else {
+            due = (now - lastFallbackAdvertTime) >= ADVERT_FALLBACK_INTERVAL_MS;
+        }
+        if (due) {
+            lastFallbackAdvertTime = now;
+            LOG_RAW("[A] ADV fallback (no time sync)\n\r");
+            sendAdvert(false);  // zero-hop keeps the airtime cost low
+        }
+        return;
+    }
 
     // Separate flood interval mode
     if (floodAdvertIntervalMs > 0) {
@@ -3296,24 +3323,44 @@ void processReceivedPacket(MCPacket* pkt) {
         Serial.printf(" (len=%d)\n\r", pkt->payloadLen - 100);
         #endif
 
+        // One-time diagnostic: show what timestamp the first ADVERT carried.
+        // 0 means the sender has no valid clock and we cannot sync from it -
+        // exactly the case that keeps the ADVERT gate closed.
+        static bool loggedFirstAdvertTs = false;
+        if (!loggedFirstAdvertTs) {
+            loggedFirstAdvertTs = true;
+            LOG_RAW("[ADV] rx ts=%lu len=%d\n\r",
+                    (unsigned long)advertTime, pkt->payloadLen);
+        }
+
         if (advertTime > 0) {
             uint8_t syncResult = timeSync.syncFromAdvert(advertTime);
 
-            if (syncResult == 1) {
-                // First sync - use immediately
-                ledBlueDoubleBlink();  // Signal time sync acquired
-                LOG(TAG_OK " Time sync %lu\n\r", timeSync.getTimestamp());
-                statsSetFirstBootTime(timeSync.getTimestamp());  // Persistent stats
-                // Schedule our own ADVERT after sync
-                pendingAdvertTime = millis() + ADVERT_AFTER_SYNC_MS;
-                LOG(TAG_INFO " ADV in %ds\n\r", ADVERT_AFTER_SYNC_MS / 1000);
-            } else if (syncResult == 2) {
-                // Re-sync via consensus (2 different sources agreed)
-                ledBlueDoubleBlink();  // Signal time re-sync
-                LOG(TAG_OK " Time resync %lu\n\r", timeSync.getTimestamp());
-                // Schedule new ADVERT with updated time
-                pendingAdvertTime = millis() + ADVERT_AFTER_SYNC_MS;
-                LOG(TAG_INFO " ADV in %ds\n\r", ADVERT_AFTER_SYNC_MS / 1000);
+            if (syncResult == 1 || syncResult == 2) {
+                ledBlueDoubleBlink();  // Signal time sync acquired / re-sync
+                LOG(TAG_OK " Time %s %lu\n\r",
+                    syncResult == 1 ? "sync" : "resync", timeSync.getTimestamp());
+                if (syncResult == 1) {
+                    statsSetFirstBootTime(timeSync.getTimestamp());  // Persistent stats
+                }
+
+                // Restore the ADVERT schedule from the EEPROM so a reset does not
+                // restart the full interval from zero. After a fresh flash the
+                // stored value is 0 and the node announces itself immediately.
+                uint32_t lastUnix = statsGetLastAdvertUnix();
+                uint32_t nowTs = timeSync.getTimestamp();
+                bool recent = false;
+                if (lastUnix > 0 && nowTs > lastUnix) {
+                    uint32_t age = nowTs - lastUnix;   // seconds
+                    advertGen.setElapsedSeconds(age);
+                    recent = age < (ADVERT_POST_SYNC_MIN_AGE_MS / 1000UL);
+                }
+                if (recent) {
+                    LOG(TAG_INFO " ADV keep schedule\n\r");
+                } else {
+                    pendingAdvertTime = millis() + ADVERT_AFTER_SYNC_MS;
+                    LOG(TAG_INFO " ADV in %ds\n\r", ADVERT_AFTER_SYNC_MS / 1000);
+                }
             } else if (timeSync.hasPendingSync()) {
                 // Received different time, stored as pending - waiting for confirmation
                 LOG(TAG_INFO " Time drift %lu pending\n\r", advertTime);

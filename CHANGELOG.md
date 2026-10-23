@@ -2,6 +2,32 @@
 
 Dieses Changelog beschreibt **Entwicklungsstände dieses Community-Forks**, nicht offizielle MeshCore-Releases. Die Originalhistorie von [atomozero/CubeCellMeshCore](https://github.com/atomozero/CubeCellMeshCore) steht in [`docs/UPSTREAM_README.md`](docs/UPSTREAM_README.md) und in der Git-Historie.
 
+## [v0.8.1] – 22.10.2026
+
+**Sichtbarkeit ohne Zeitquelle.** Behebt den Zirkelschluss, durch den ein Repeater ohne Zeit-Sync dauerhaft unsichtbar blieb, und macht den ADVERT-Takt über einen RESET hinweg stabil. Noch **nicht auf Hardware verifiziert** — der Build ist sauber, die Logik ist aber nur im Code geprüft.
+
+### Added
+
+- **Fallback-ADVERT ohne Zeit-Sync.** Bisher kehrte `checkAdvertBeacon()` bei fehlender Synchronisation sofort zurück: kein ADVERT → kein Public Key in der App → keine Fernkonsole, keine Diagnose. Nach **2 Stunden** ohne Sync wird jetzt ein Zero-Hop-ADVERT gesendet, danach stündlich (`ADVERT_FALLBACK_NO_SYNC_MS`, `ADVERT_FALLBACK_INTERVAL_MS`). Der Zeitstempel darin ist uptime-basiert; strenge Peers können das Paket verwerfen, aber direkte Nachbarn lernen den Schlüssel kennen. Auf einem versiegelten Solar-Gerät ist das der einzige Weg zurück.
+- **ADVERT-Takt übersteht einen RESET.** Der Zeitpunkt des letzten ADVERT wird als Unix-Zeit in `PersistentStats.lastAdvertUnix` gespeichert. Nach dem Zeit-Sync wird der Zeitplan daraus wiederhergestellt (`AdvertGenerator::setElapsedSeconds()`). Ein Neustart beginnt also nicht mehr bei null. War der letzte ADVERT jünger als 10 Minuten, wird der zusätzliche Sofort-ADVERT nach dem Sync unterdrückt (`ADVERT_POST_SYNC_MIN_AGE_MS`).
+- **Diagnose-Zeile für den ersten empfangenen ADVERT.** Einmal pro Start erscheint `[ADV] rx ts=<unix> len=<bytes>` über `LOG_RAW`. Der Wert `0` bedeutet: der Absender hat keine gültige Uhr, aus diesem Paket lässt sich keine Zeit ziehen — genau der Fall, der das ADVERT-Gate geschlossen hält. Damit ist die Ursache in Sekunden erkennbar.
+- Prüfsummen-/Layout-Absicherung: `static_assert` stellt sicher, dass der Statistikblock den Mailbox-Block nicht überlappt.
+
+### Changed
+
+- `PersistentStats` auf **Version 2** und **56 Byte** erweitert (vorher 52). Die vier zusätzlichen Bytes lagen vorher ungenutzt bei Offset 332–335; der Block endet jetzt exakt bei 335, die Mailbox bei 336 bleibt unberührt. **Beim ersten Start nach dem Update werden die gespeicherten Zähler einmalig zurückgesetzt** (Versionswechsel) — Einstellungen, Identität, Regionen und Mailbox sind nicht betroffen.
+- Firmwarekennung auf **`0.8.1`** gesetzt (`ver`, Boot-Banner).
+
+### Build
+
+- `v0.8.1` **mit** `config/repeater.json`: **129.248 / 131.072 B Flash (98,6 %)**, **9.632 / 16.384 B RAM (58,8 %)**, `SUCCESS`, keine Warnungen. Reserve: **1.824 B**.
+- Konfig-Tests `python3 tools/test_user_config.py` → **18/18**; Krypto-Host-Test `tools/hosttest/run.sh` → alle Fälle grün.
+
+### Still open
+
+- Hardware-Gegenprobe im Feld: erscheint der Knoten nach dem Fallback in der App, und wächst `ADV:tx` in `stats`?
+- Regionen nach Store-and-Forward, gerichteter Ping über 2+ Hops (unverändert offen aus v0.8.0).
+
 ## [v0.8.0] – 22.10.2026
 
 **Erstes stabiles Release dieses Forks auf `main`.** Es fasst die bedarfsgesteuerte OLED-Diagnose, die persistente Regionsspeicherung, das korrigierte EEPROM-Layout, die zentrale Konfiguration `config/repeater.json` sowie mehrere Puffer- und CLI-Korrekturen zusammen. Die Arbeitszweige `feature/oled-diagnostics` (`bf9c48b`) und `docs/project-documentation` sind vollständig in `main` aufgegangen; der Review-Zweig `fix/eeprom-layout-review` wurde nach `main` gemergt.

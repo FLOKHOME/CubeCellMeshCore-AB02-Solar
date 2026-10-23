@@ -8,7 +8,7 @@
  * Based on MeshCore protocol: https://github.com/meshcore-dev/MeshCore
  */
 
-#define FIRMWARE_VERSION    "0.8.0"
+#define FIRMWARE_VERSION    "0.8.1"
 
 //=============================================================================
 // Configuration
@@ -310,6 +310,19 @@ extern uint32_t systime;
 #define ADVERT_INTERVAL_MS      300000  // 5 minutes default
 #define ADVERT_ENABLED          true
 #define ADVERT_AFTER_SYNC_MS    5000    // Send ADVERT 5 seconds after time sync
+// A repeater only advertises once its clock is synchronised, and the clock can
+// only be synchronised from an ADVERT carrying a valid timestamp. In a mesh
+// with no time source that deadlocks: the node stays invisible forever and can
+// never be reached over the air. The fallback below breaks the deadlock by
+// sending a zero-hop ADVERT anyway after a while, so direct neighbours (and
+// their app) still learn the public key. The timestamp in that packet is
+// uptime-based and strict peers may reject it, but being discoverable beats
+// being invisible on a solar site that cannot be opened without tools.
+#define ADVERT_FALLBACK_NO_SYNC_MS  7200000UL  // First fallback after 2 h without sync
+#define ADVERT_FALLBACK_INTERVAL_MS 3600000UL  // Then once per hour
+// Do not re-announce immediately after a reset when the last ADVERT is younger
+// than this; the schedule is restored from EEPROM instead.
+#define ADVERT_POST_SYNC_MIN_AGE_MS 600000UL   // 10 minutes
 
 //=============================================================================
 // Function prototypes

@@ -95,6 +95,7 @@ uint8_t autoAddMaxHops = 0;  // Default: no limit
 //=============================================================================
 uint32_t bootTime = 0;
 uint32_t pendingAdvertTime = 0;
+uint32_t lastFallbackAdvertTime = 0;
 uint32_t activeReceiveStart = 0;
 uint32_t preambleTimeMsec = 50;
 uint32_t maxPacketTimeMsec = 500;

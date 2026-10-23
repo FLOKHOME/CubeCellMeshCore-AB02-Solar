@@ -117,6 +117,8 @@ extern uint8_t autoAddMaxHops;  // 0=no limit, 1-64=max hops for auto-add contac
 //=============================================================================
 extern uint32_t bootTime;
 extern uint32_t pendingAdvertTime;
+// Last fallback ADVERT without time sync (millis(), 0 = none since boot).
+extern uint32_t lastFallbackAdvertTime;
 extern uint32_t activeReceiveStart;
 extern uint32_t preambleTimeMsec;
 extern uint32_t maxPacketTimeMsec;
