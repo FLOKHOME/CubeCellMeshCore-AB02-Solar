@@ -45,8 +45,11 @@
 //=============================================================================
 #define STATS_EEPROM_OFFSET     280
 #define STATS_EEPROM_MAGIC      0x5754  // "ST"
-#define STATS_EEPROM_VERSION    1
-#define STATS_STRUCT_SIZE       52      // sizeof(PersistentStats)
+// v2 adds lastAdvertUnix. The block grows from 52 to 56 bytes and now ends
+// exactly at 335 - the 4 bytes at 332..335 were unused padding before, so the
+// mailbox block at 336 is not touched and no offset has to move.
+#define STATS_EEPROM_VERSION    2
+#define STATS_STRUCT_SIZE       56      // sizeof(PersistentStats)
 // 30 minutes. Every commit rewrites the whole buffer (flash wear), so keep
 // this interval generous on a permanently powered solar node.
 #define STATS_SAVE_INTERVAL_MS  1800000UL
@@ -172,9 +175,15 @@ struct PersistentStats {
     uint16_t lastBootReason;    // Last boot reason code
     uint32_t firstBootTime;     // Unix timestamp of first boot
     uint32_t lastSaveTime;      // Unix timestamp of last save
+    // Unix timestamp of the last ADVERT we sent (0 = unknown). Restored after a
+    // reset so the advert schedule continues instead of restarting at zero.
+    uint32_t lastAdvertUnix;
     uint16_t checksum;          // CRC16 of data
 };
 #endif
 
 static_assert(sizeof(NodeConfig) == CONFIG_STRUCT_SIZE, "NodeConfig size changed - EEPROM layout needs a version bump");
-static_assert(sizeof(PersistentStats) == 52, "PersistentStats size changed - EEPROM layout needs a version bump");
+static_assert(sizeof(PersistentStats) == 56, "PersistentStats size changed - EEPROM layout needs a version bump");
+// The stats block must end before the mailbox block starts.
+static_assert(STATS_EEPROM_OFFSET + STATS_STRUCT_SIZE <= MAILBOX_EEPROM_OFFSET,
+              "PersistentStats overlaps the mailbox block");

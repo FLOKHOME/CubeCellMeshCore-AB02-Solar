@@ -4,7 +4,7 @@
 
 Dieser Fork entwickelt einen kostengünstigen MeshCore-kompatiblen **EU868-Repeater** auf Basis des **Heltec CubeCell HTCC-AB02 V1.0** (ASR6502, SX1262) mit bedarfsgesteuerter OLED-Diagnose und dem Ziel eines späteren solarversorgten Outdoor-Betriebs.
 
-**Aktueller Stand:** Release **[`v0.8.0`](https://github.com/FLOKHOME/CubeCellMeshCore-AB02-Solar/releases/tag/v0.8.0)** auf `main`. Enthalten sind die bedarfsgesteuerte OLED-Diagnose, die persistente Regionsspeicherung, das korrigierte EEPROM-Layout, die zentrale Konfiguration `config/repeater.json` sowie mehrere Puffer- und CLI-Korrekturen. Die früheren Arbeitszweige `feature/oled-diagnostics` und `docs/project-documentation` sind vollständig in `main` aufgegangen; der Review-Zweig `fix/eeprom-layout-review` wurde nach `main` gemergt.
+**Aktueller Stand:** Release **[`v0.8.1`](https://github.com/FLOKHOME/CubeCellMeshCore-AB02-Solar/releases/tag/v0.8.1)** auf `main`. Enthalten sind die bedarfsgesteuerte OLED-Diagnose, die persistente Regionsspeicherung, das korrigierte EEPROM-Layout, die zentrale Konfiguration `config/repeater.json`, mehrere Puffer- und CLI-Korrekturen sowie der **Fallback-ADVERT ohne Zeit-Sync** — ohne ihn bleibt ein Repeater ohne Zeitquelle dauerhaft unsichtbar und ist über Funk nicht erreichbar. Die früheren Arbeitszweige `feature/oled-diagnostics` und `docs/project-documentation` sind vollständig in `main` aufgegangen.
 
 **Auf Hardware bestätigt:** Das ADVERT-Intervall übersteht einen RESET (`[A] ADV: on every 7200s`, `Int:120m next:7165s`), und die eingebaute Konfiguration wird übernommen (`Cfg:built-in fp:… stored:applied`). **Noch offen:** Regionen nach einem Store-and-Forward und ein gerichteter Ping über 2+ Hops — siehe [Review-Fixes](docs/AB02/REVIEW_FIXES.md).
 
@@ -31,10 +31,10 @@ Details und Grenzen: [Feature-Übersicht](FEATURES.md) · [Testbericht](docs/AB0
 
 | Firmwarestand | Flash | RAM | Einordnung |
 | --- | ---: | ---: | --- |
-| `v0.8.0` **ohne** `config/repeater.json` | 128.200 / 131.072 B (97,8 %) | 9.624 / 16.384 B (58,7 %) | Review-Fixes, ohne eingebaute Konfiguration |
-| `v0.8.0` **mit** `config/repeater.json` | 128.936 / 131.072 B (98,4 %) | 9.624 / 16.384 B (58,7 %) | Review-Fixes + zentrale Konfiguration |
+| `v0.8.1` **ohne** `config/repeater.json` | 128.504 / 131.072 B (98,0 %) | 9.632 / 16.384 B (58,8 %) | Fallback-ADVERT, ohne eingebaute Konfiguration |
+| `v0.8.1` **mit** `config/repeater.json` | 129.248 / 131.072 B (98,6 %) | 9.632 / 16.384 B (58,8 %) | Fallback-ADVERT + zentrale Konfiguration |
 
-**Wichtig:** Beide Werte wurden mit dem Release-Stand `v0.8.0` neu gemessen; die eingebaute Konfiguration kostet rund **736 B** Flash. Wegen des CubeCell-Bootloaders sagt ein erfolgreicher Build noch nichts über einen erfolgreichen Upload oder Funkbetrieb. Der Flash ist mit 98,4 % nahezu voll — neue Funktionen brauchen vorher Platz.
+**Wichtig:** Beide Werte wurden mit dem Release-Stand `v0.8.1` gemessen; die eingebaute Konfiguration kostet rund **744 B** Flash. Wegen des CubeCell-Bootloaders sagt ein erfolgreicher Build noch nichts über einen erfolgreichen Upload oder Funkbetrieb. Der Flash ist mit 98,6 % nahezu voll — neue Funktionen brauchen vorher Platz. Reserve: **1.824 B**.
 
 ## Hardware
 

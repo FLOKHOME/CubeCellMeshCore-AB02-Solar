@@ -292,6 +292,20 @@ public:
     }
 
     /**
+     * Restore the schedule after a reset from the persisted send time.
+     * Called once the clock is valid, because only then the elapsed time
+     * between the stored timestamp and "now" is meaningful.
+     * @param elapsedSeconds Seconds since the last ADVERT was sent
+     */
+    void setElapsedSeconds(uint32_t elapsedSeconds) {
+        uint32_t elapsedMs = elapsedSeconds * 1000UL;
+        // Never claim more than one full interval has passed, otherwise the
+        // unsigned subtraction below would wrap into the future.
+        if (elapsedMs > advertInterval) elapsedMs = advertInterval;
+        lastAdvertTime = millis() - elapsedMs;
+    }
+
+    /**
      * Get time until next ADVERT in seconds
      */
     uint32_t getTimeUntilNext() const {
