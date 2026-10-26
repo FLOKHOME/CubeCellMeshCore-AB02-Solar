@@ -1,7 +1,9 @@
 #pragma once
 #include <Arduino.h>
+#include <EEPROM.h>
 #include "Packet.h"
 #include "Identity.h"
+#include "../core/StorageLayout.h"
 
 /**
  * MeshCore ADVERT Packet Generation
@@ -54,14 +56,30 @@ public:
 
         uint32_t now = millis();
 
-        // FIRST SYNC: Not yet synchronized - use first valid timestamp immediately
+        // FIRST SYNC: require two matching timestamps before trusting the
+        // mesh clock. A single ADVERT from a node with a broken build stamp
+        // (several 2024-dated repeaters exist) would otherwise poison our
+        // clock for hours. The persisted timestamp from the last boot is
+        // already loaded by loadPersisted(), so this path only runs on a
+        // truly fresh node.
         if (!synchronized) {
-            baseTimestamp = unixTime;
-            baseMillis = now;
-            synchronized = true;
-            pendingTimestamp = 0;
-            pendingMillis = 0;
-            return 1;  // First sync
+            if (pendingTimestamp > 0 && (now - pendingMillis) < CONSENSUS_WINDOW_MS) {
+                uint32_t pendingAdjusted = pendingTimestamp + ((now - pendingMillis) / 1000);
+                int32_t pendingDiff = (int32_t)unixTime - (int32_t)pendingAdjusted;
+                if (abs(pendingDiff) < (int32_t)MAX_TIMESTAMP_DIFF) {
+                    uint32_t avgTime = (unixTime + pendingAdjusted) / 2;
+                    baseTimestamp = avgTime;
+                    baseMillis = now;
+                    synchronized = true;
+                    pendingTimestamp = 0;
+                    pendingMillis = 0;
+                    savePersisted();
+                    return 1;  // First sync via consensus
+                }
+            }
+            pendingTimestamp = unixTime;
+            pendingMillis = now;
+            return 0;  // Wait for a second matching ADVERT
         }
 
         // ALREADY SYNCHRONIZED: Check if received time differs from ours
@@ -90,6 +108,7 @@ public:
                 baseMillis = now;
                 pendingTimestamp = 0;
                 pendingMillis = 0;
+                savePersisted();
                 return 2;  // Re-sync via consensus
             }
         }
@@ -129,6 +148,7 @@ public:
         synchronized = true;
         pendingTimestamp = 0;
         pendingMillis = 0;
+        savePersisted();
     }
 
     /**
@@ -172,6 +192,38 @@ public:
     uint32_t getPendingTimestamp() const {
         if (pendingTimestamp == 0) return 0;
         return pendingTimestamp + ((millis() - pendingMillis) / 1000);
+    }
+
+    /**
+     * Load the last persisted timestamp from EEPROM. Called once at boot.
+     * A valid timestamp marks the clock as synchronized immediately, so the
+     * node starts advertising real time without waiting for a peer ADVERT.
+     */
+    void loadPersisted() {
+        uint16_t magic = 0;
+        EEPROM.get(TIMESYNC_EEPROM_OFFSET, magic);
+        if (magic != TIMESYNC_EEPROM_MAGIC) return;
+        uint32_t ts = 0;
+        EEPROM.get(TIMESYNC_EEPROM_OFFSET + 2, ts);
+        if (ts >= 1577836800UL && ts <= 4102444800UL) {
+            baseTimestamp = ts;
+            baseMillis = millis();
+            synchronized = true;
+        }
+    }
+
+    /**
+     * Persist the current timestamp. Called on every successful sync and on
+     * manual "time" set. Writes 12 bytes and commits; sync events are rare
+     * (hours apart), so flash wear is negligible.
+     */
+    void savePersisted() {
+        if (!synchronized) return;
+        uint16_t magic = TIMESYNC_EEPROM_MAGIC;
+        uint32_t ts = getTimestamp();
+        EEPROM.put(TIMESYNC_EEPROM_OFFSET, magic);
+        EEPROM.put(TIMESYNC_EEPROM_OFFSET + 2, ts);
+        EEPROM.commit();
     }
 };
 

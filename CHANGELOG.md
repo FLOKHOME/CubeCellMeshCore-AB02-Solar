@@ -2,6 +2,32 @@
 
 Dieses Changelog beschreibt **Entwicklungsstände dieses Community-Forks**, nicht offizielle MeshCore-Releases. Die Originalhistorie von [atomozero/CubeCellMeshCore](https://github.com/atomozero/CubeCellMeshCore) steht in [`docs/UPSTREAM_README.md`](docs/UPSTREAM_README.md) und in der Git-Historie.
 
+## [v0.8.3] – 26.10.2026
+
+**Uhr übersteht den Reset, erster Sync nur mit Konsens, Konsole bleibt wach, KiekR bekommt Antworten.** Behebt vier Schwachstellen, die im Feldtest aufgefallen sind: eine bei jedem Neustart verlorene Uhr, die Übernahme eines 2,4-Jahre-Fehlers von einzelnen 2024er-Knoten, eine nach 2 Minuten abgeschaltete Konsole und fehlende Antworten auf anonyme Regions-/Owner-Anfragen (KiekR zeigte `regions: []` und `fw_version: E:?`).
+
+### Added
+
+- **Zeit-Persistenz im EEPROM.** Neuer Block bei Offset 584 (Magic `"TS"`, 12 Byte): der zuletzt gültige Unix-Zeitstempel wird bei jedem Sync und bei `time <epoch>` gespeichert und beim Boot wieder geladen. Damit startet ein Solar-Knoten nach Brownout/Watchdog/Reset sofort mit plausibler Zeit statt mit Uptime-Werten. `StorageLayout.h` prüft die Layout-Grenzen zur Compile-Zeit; `STORAGE_LAYOUT_END` wandert von 581 auf 596, `EEPROM_SIZE` bleibt 640.
+- **Anonyme Info-Antworten (Regions / Owner / Clock).** `processAnonRequest()` unterscheidet jetzt nach dem Entschlüsseln zwischen Login (druckbares Passwort ab Byte 4) und Info-Anfrage (Steuerbyte `0x01`/`0x02`/`0x03`). Neue Funktion `handleAnonInfoRequest()` antwortet im selben Format wie Upstream-MeshCore: `[Sender-Timestamp:4][eigene Uhr:4][Nutzlast]`, verschlüsselt mit dem ECDH-Secret. Regions liefert die konfigurierten Regionsnamen kommasepariert, Owner `FIRMWARE_VERSION\nName\nOwner-Info`, Clock ein Feature-Byte. Dafür neu in `Crypto.h`: `decryptAnonReqRaw()` (liefert den kompletten Klartext statt nur des ASCII-Passworts).
+- **Serien-Konserve.** `checkSerial()` merkt sich den letzten Byte-Empfang; der Deep-Sleep-Zweig unterdrückt das Schlafen für 60 s nach der letzten Eingabe (`SERIAL_KEEP_AWAKE_MS`). Wer am Terminal arbeitet, wird nicht mehr nach exakt 120 s abgehängt. Im Feld bleibt der Timer alt, das Gerät schläft wie konfiguriert.
+
+### Changed
+
+- **Erster Zeit-Sync nur mit Konsens.** Bisher übernahm der Knoten den ersten gültigen ADVERT-Zeitstempel sofort — auch einen 2024er Build-Stempel. Jetzt braucht der allererste Sync zwei übereinstimmende Zeitstempel innerhalb des Konsensfensters (1 h, max. 5 min Abweichung), genau wie beim Re-Sync. Ein einzelner defekter Peer kann die Uhr nicht mehr vergiften.
+- `TimeSync::setTime()` speichert jetzt ebenfalls ins EEPROM.
+- Firmwarekennung auf **`0.8.3`** gesetzt (`ver`, Boot-Banner).
+
+### Build
+
+- **130.024 / 131.072 B Flash (99,2 %)**, **9.640 / 16.384 B RAM (58,8 %)**, `SUCCESS`. Reserve: **1.048 B** — knapp, weitere Funktionen brauchen zuerst Platz.
+- Auf HTCC-AB02 geflasht und geprüft: `ver` → `0.8.3`, `time` → `sync`, nach `reboot` weiterhin `sync` (Persistenz bestätigt).
+
+### Still open
+
+- KiekR-Gegenprobe: erscheinen nach dem nächsten ADVERT Regionen und Firmware-Version statt `[]` / `E:?`?
+- Erster Sync auf einem wirklich frischen Knoten (ohne EEPROM-Zeit) braucht jetzt zwei passende ADVERTs — bei 120-min-Takt also bis zu 4 h. Bis dahin sendet der Fallback-ADVERT Uptime-Zeitstempel.
+
 ## [v0.8.2] – 23.10.2026
 
 **Heimatregion konfigurierbar, Solar-Vorgaben als Standard.** Der Repeater kann jetzt über `config/repeater.json` festlegen, in welcher Region er selbst sendet, während die Weiterleitung unverändert über die Allow-Liste läuft. Die ausgelieferten Vorgaben sind auf Dauerbetrieb mit kleiner Solarzelle eingestellt. **Auf HTCC-AB02 verifiziert.**

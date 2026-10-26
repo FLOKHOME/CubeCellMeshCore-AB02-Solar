@@ -8,7 +8,7 @@
  * Based on MeshCore protocol: https://github.com/meshcore-dev/MeshCore
  */
 
-#define FIRMWARE_VERSION    "0.8.2"
+#define FIRMWARE_VERSION    "0.8.3"
 
 //=============================================================================
 // Configuration

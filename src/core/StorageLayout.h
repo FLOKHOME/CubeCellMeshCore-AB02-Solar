@@ -84,9 +84,24 @@
 #define REGION_SAVE_BYTES       (REGION_SAVE_HEADER_LEN + REGION_MAX_ENTRIES * REGION_SAVE_ENTRY_BYTES)
 
 //=============================================================================
+// Time-sync persistence block - offset 584, 12 bytes -> ends at 596
+//
+// The CubeCell has no RTC and no network time source. Before this block
+// existed, TimeSync lived only in RAM: every reset (brown-out on a solar
+// node, watchdog, manual reboot) threw the clock away and the node started
+// at "no time", so its ADVERTs carried an uptime timestamp until a peer
+// advert arrived. On a mesh where some repeaters still advertise a 2024
+// build stamp, that meant inheriting a 2.4 year error. Persisting the last
+// good timestamp across resets removes the whole class of failure.
+//=============================================================================
+#define TIMESYNC_EEPROM_OFFSET  584
+#define TIMESYNC_EEPROM_MAGIC   0x5453  // "TS"
+#define TIMESYNC_STRUCT_SIZE    12      // magic(2) + timestamp(4) + reserved(6)
+
+//=============================================================================
 // Layout consistency checks (compile time, no flash cost)
 //=============================================================================
-#define STORAGE_LAYOUT_END      (REGION_EEPROM_OFFSET + REGION_SAVE_BYTES)
+#define STORAGE_LAYOUT_END      (TIMESYNC_EEPROM_OFFSET + TIMESYNC_STRUCT_SIZE)
 
 #if STORAGE_LAYOUT_END > EEPROM_SIZE
 #error "EEPROM_SIZE is smaller than the storage layout; region data would be dropped silently"

@@ -319,6 +319,52 @@ public:
     }
 
     /**
+     * Decrypt anonymous request and return the raw plaintext.
+     *
+     * The login path above only extracts printable ASCII (the password). An
+     * anonymous *info* request starts with a control byte (0x01 regions,
+     * 0x02 owner info, 0x03 clock) at offset 4 and would therefore be
+     * discarded as "empty password" and never answered — which is why KiekR
+     * showed "regions: []" and "fw_version: E:?" for this node. This variant
+     * hands the whole plaintext back so the caller can dispatch on byte 4.
+     *
+     * @return plaintext length (including the 4-byte timestamp), or 0 on failure
+     */
+    uint8_t decryptAnonReqRaw(uint32_t* timestamp, uint8_t* out, uint8_t maxOutLen,
+                              const uint8_t* payload, uint16_t payloadLen,
+                              const uint8_t* myPrivateKey) {
+        if (payloadLen < 32 + MC_CIPHER_MAC_SIZE + 15) {
+            return 0;
+        }
+
+        const uint8_t* ephemeralPub = payload;
+        const uint8_t* encrypted = &payload[32];
+        uint16_t encryptedLen = payloadLen - 32;
+
+        uint8_t secret[MC_SHARED_SECRET_SIZE];
+        if (!calcSharedSecret(secret, myPrivateKey, ephemeralPub)) {
+            return 0;
+        }
+
+        uint8_t decrypted[128];
+        uint16_t decryptedLen = MACThenDecrypt(decrypted, encrypted, encryptedLen,
+                                                secret, secret, sizeof(decrypted));
+        memset(secret, 0, MC_SHARED_SECRET_SIZE);
+
+        if (decryptedLen == 0) {
+            return 0;
+        }
+
+        *timestamp = decrypted[0] | (decrypted[1] << 8) |
+                     (decrypted[2] << 16) | (decrypted[3] << 24);
+
+        uint8_t n = (decryptedLen > maxOutLen) ? maxOutLen : (uint8_t)decryptedLen;
+        memcpy(out, decrypted, n);
+        memset(decrypted, 0, sizeof(decrypted));
+        return n;
+    }
+
+    /**
      * Encrypt response data
      *
      * @param output Output buffer: [Encrypted data][HMAC:16]

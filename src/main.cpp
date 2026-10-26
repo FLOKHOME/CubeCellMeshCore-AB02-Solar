@@ -1124,6 +1124,13 @@ static bool dispatchSharedCommand(const char* cmd, CmdCtx& ctx, bool isAdmin) {
 char cmdBuffer[48];
 uint8_t cmdPos = 0;
 
+// Last time a byte arrived on the serial console. Deep sleep is suppressed
+// while this is recent, so a user at the terminal can keep issuing commands
+// without racing the 2-minute boot safe window. In the field nobody is
+// attached to the UART, the timer stays stale, and the node sleeps normally.
+static uint32_t lastSerialActivityMs = 0;
+#define SERIAL_KEEP_AWAKE_MS 60000UL
+
 // Unified radio param parser for tempradio and set radio
 static void parseAndApplyRadio(const char* args, char sep) {
     static char buf[48];
@@ -1400,6 +1407,9 @@ void processCommand(char* cmd) {
 
 void checkSerial() {
     while (Serial.available()) {
+        // Record activity so the power-saving loop does not put the UART back
+        // to sleep while someone is typing at the console.
+        lastSerialActivityMs = millis();
         char c = Serial.read();
         if (c == '\n' || c == '\r') {
             if (cmdPos > 0) {
@@ -3134,6 +3144,81 @@ bool sendLoginResponse(const uint8_t* clientPubKey, const uint8_t* sharedSecret,
 }
 
 /**
+ * Answer an anonymous info request (regions / owner info / clock).
+ *
+ * KiekR and other observers query repeaters anonymously to learn their region
+ * list and firmware/owner metadata. Before this handler existed, every
+ * ANON_REQ was treated as a login attempt: the info requests decrypted to an
+ * "empty password" and were dropped without a reply, so the map showed
+ * "regions: []" and "fw_version: E:?".
+ *
+ * Response layout matches upstream MyMesh:
+ *   [sender_timestamp:4][our_clock:4][payload...]
+ * The first 4 bytes echo the requester's timestamp as a tag, the next 4 bytes
+ * carry our clock so the requester can sync from the answer.
+ *
+ * @return true if a response was queued
+ */
+bool handleAnonInfoRequest(MCPacket* pkt, const uint8_t* ephemeralPub, uint32_t senderTs,
+                           const uint8_t* plain, uint8_t plainLen) {
+    uint8_t reqType = plain[4];
+    uint8_t response[160];
+    uint32_t now = timeSync.getTimestamp();
+    memcpy(response, &senderTs, 4);
+    memcpy(&response[4], &now, 4);
+    uint8_t respLen = 8;
+
+    if (reqType == 0x01) {
+        // Regions request: comma-separated region names. The wildcard "*" is
+        // not a named region and is skipped by getEntry().
+        for (uint8_t i = 0; i < regionMap.getCount(); i++) {
+            const RegionEntry* e = regionMap.getEntry(i);
+            if (e && e->name[0]) {
+                size_t n = strlen(e->name);
+                if (respLen + n + 1 < sizeof(response)) {
+                    memcpy(&response[respLen], e->name, n);
+                    respLen += n;
+                    response[respLen++] = ',';
+                }
+            }
+        }
+    } else if (reqType == 0x02) {
+        // Owner info request: version, name and owner info, newline separated.
+        // This is where "fw_version: E:?" comes from — the requester reads the
+        // first line as the firmware version.
+        int n = snprintf((char*)&response[8], sizeof(response) - 8, "%s\n%s\n%s",
+                         FIRMWARE_VERSION, nodeIdentity.getNodeName(), ownerInfo);
+        if (n > 0 && (size_t)n < sizeof(response) - 8) respLen = 8 + (uint8_t)n;
+    } else {
+        // Clock/status request: features byte (0 = none advertised)
+        response[8] = 0;
+        respLen = 9;
+    }
+
+    uint8_t secret[MC_SHARED_SECRET_SIZE];
+    if (!MeshCrypto::calcSharedSecret(secret, nodeIdentity.getPrivateKey(), ephemeralPub)) {
+        return false;
+    }
+    uint8_t encrypted[200];
+    uint16_t encLen = meshCrypto.encryptResponse(encrypted, response, respLen, secret);
+    memset(secret, 0, sizeof(secret));
+    if (encLen == 0) return false;
+
+    MCPacket respPkt;
+    respPkt.clear();
+    respPkt.header.set(MC_ROUTE_FLOOD, MC_PAYLOAD_RESPONSE, MC_PAYLOAD_VER_1);
+    respPkt.pathLen = 0;
+    respPkt.payload[0] = ephemeralPub[0];          // destination hash
+    respPkt.payload[1] = nodeIdentity.getNodeHash(); // source hash
+    memcpy(&respPkt.payload[2], encrypted, encLen);
+    respPkt.payloadLen = 2 + encLen;
+    txQueue.add(&respPkt);
+
+    LOG(TAG_AUTH " Anon info 0x%02X -> %d B\n\r", reqType, respLen);
+    return true;
+}
+
+/**
  * Process ANON_REQ (anonymous login request)
  *
  * ANON_REQ payload format (MeshCore V1):
@@ -3160,15 +3245,34 @@ bool processAnonRequest(MCPacket* pkt) {
     // decryptAnonReq expects: [sender_pubkey:32][MAC:2][ciphertext]
     // Note: byte[1] (7E) is first byte of sender pubkey, NOT srcHash!
     uint32_t timestamp;
-    char password[32];
-
-    // Skip only destHash[0], sender pubkey starts at [1]
-    uint8_t pwdLen = meshCrypto.decryptAnonReq(
-        &timestamp, password, sizeof(password) - 1,
+    uint8_t plain[96];
+    uint8_t plainLen = meshCrypto.decryptAnonReqRaw(
+        &timestamp, plain, sizeof(plain),
         &pkt->payload[1],     // From sender pubkey onwards (skip only destHash)
         pkt->payloadLen - 1,  // Length excluding destHash
         nodeIdentity.getPrivateKey()
     );
+
+    if (plainLen < 5) {
+        return false;
+    }
+
+    // Anonymous info requests carry a control byte at offset 4 (the first byte
+    // after the 4-byte timestamp): 0x01 regions, 0x02 owner info, 0x03 clock.
+    // A login request starts with a printable password character there.
+    if (plain[4] >= 0x01 && plain[4] <= 0x03) {
+        return handleAnonInfoRequest(pkt, ephemeralPub, timestamp, plain, plainLen);
+    }
+
+    // Login request: extract the printable password starting at offset 4.
+    char password[32];
+    uint8_t pwdLen = 0;
+    for (uint8_t i = 4; i < plainLen && pwdLen < sizeof(password) - 1; i++) {
+        if (plain[i] < 32 || plain[i] > 126) break;
+        password[pwdLen++] = (char)plain[i];
+    }
+    password[pwdLen] = '\0';
+    memset(plain, 0, sizeof(plain));
 
     if (pwdLen == 0) {
         return false;
@@ -3556,6 +3660,13 @@ void setup() {
     // Load configuration from EEPROM
     loadConfig();
 
+    // Restore the last known time from EEPROM. This must happen after
+    // loadConfig() (which calls EEPROM.begin) and before advertGen.begin(),
+    // so the first ADVERT already carries a plausible timestamp instead of
+    // an uptime value. Without this, every reset on a solar node started at
+    // "no time" and could inherit a 2.4-year error from a 2024-built peer.
+    timeSync.loadPersisted();
+
     // Load persistent statistics
     loadPersistentStats();
 
@@ -3844,7 +3955,13 @@ void loop() {
         // Skip deep sleep during boot safe period (allows serial commands)
         bool inBootSafe = (millis() - bootTime) < BOOT_SAFE_PERIOD_MS;
 
-        if (deepSleepEnabled && powerSaveMode >= 1 && !inBootSafe && !diagDisplayActive) {
+        // Stay awake while the serial console is in use. A user at the
+        // terminal cannot wake a sleeping UART, so activity within the last
+        // 60 s keeps the node awake. In the field the timer stays stale and
+        // the node sleeps as configured.
+        bool serialActive = (millis() - lastSerialActivityMs) < SERIAL_KEEP_AWAKE_MS;
+
+        if (deepSleepEnabled && powerSaveMode >= 1 && !inBootSafe && !diagDisplayActive && !serialActive) {
             enterDeepSleep();
         } else {
             uint8_t sleepMs = (powerSaveMode == 0) ? 5 : (inBootSafe ? 5 : 20);
