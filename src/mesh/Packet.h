@@ -55,8 +55,12 @@
 #define REQ_TYPE_GET_MINMAXAVG      0x04  // Get radio min/max/avg stats
 #define REQ_TYPE_GET_ACCESS_LIST    0x05  // Get ACL entries (admin only)
 #define REQ_TYPE_GET_NEIGHBOURS     0x06  // Get neighbour list
-#define REQ_TYPE_SEND_CLI           0x07  // Send CLI command (admin only)
+// 0x07 is GET_OWNER_INFO in upstream MeshCore and in KiekR. Our fork had
+// SEND_CLI on this number, so every KiekR "read firmware/owner" query was
+// executed as a CLI command instead of being answered. SEND_CLI moved to 0x09.
+#define REQ_TYPE_GET_OWNER_INFO     0x07  // Firmware version, name, owner info
 #define REQ_TYPE_RESET_PATH         0x08  // Reset contact path
+#define REQ_TYPE_SEND_CLI           0x09  // Send CLI command (admin only, fork-specific)
 
 // Control packet types (upper nibble of first byte)
 #define CTL_TYPE_DISCOVER_REQ       0x80  // Node discovery request

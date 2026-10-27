@@ -3010,6 +3010,20 @@ bool processAuthenticatedRequest(MCPacket* pkt) {
             }
             break;
 
+        case REQ_TYPE_GET_OWNER_INFO:
+            {
+                // Response layout matches upstream/KiekR: timestamp at [0..3],
+                // then "firmware version\nnode name\nowner info".
+                int n = snprintf((char*)&responseData[responseLen],
+                                 sizeof(responseData) - responseLen,
+                                 "%s\n%s\n%s",
+                                 FIRMWARE_VERSION, nodeIdentity.getNodeName(), ownerInfo);
+                if (n > 0 && (size_t)n < sizeof(responseData) - responseLen) {
+                    responseLen += (uint16_t)n;
+                }
+            }
+            break;
+
         case REQ_TYPE_KEEP_ALIVE:
             break;
 
@@ -3162,7 +3176,7 @@ bool sendLoginResponse(const uint8_t* clientPubKey, const uint8_t* sharedSecret,
 bool handleAnonInfoRequest(MCPacket* pkt, const uint8_t* ephemeralPub, uint32_t senderTs,
                            const uint8_t* plain, uint8_t plainLen) {
     uint8_t reqType = plain[4];
-    uint8_t response[160];
+    uint8_t response[160] = {0};
     uint32_t now = timeSync.getTimestamp();
     memcpy(response, &senderTs, 4);
     memcpy(&response[4], &now, 4);
@@ -3171,17 +3185,19 @@ bool handleAnonInfoRequest(MCPacket* pkt, const uint8_t* ephemeralPub, uint32_t 
     if (reqType == 0x01) {
         // Regions request: comma-separated region names. The wildcard "*" is
         // not a named region and is skipped by getEntry().
+        bool first = true;
         for (uint8_t i = 0; i < regionMap.getCount(); i++) {
             const RegionEntry* e = regionMap.getEntry(i);
-            if (e && e->name[0]) {
-                size_t n = strlen(e->name);
-                if (respLen + n + 1 < sizeof(response)) {
-                    memcpy(&response[respLen], e->name, n);
-                    respLen += n;
-                    response[respLen++] = ',';
-                }
-            }
+            if (!e || !e->name[0]) continue;
+            if (e->name[0] == '*' && e->name[1] == '\0') continue;  // wildcard, not a name
+            size_t n = strlen(e->name);
+            if (respLen + n + 2 >= sizeof(response)) break;
+            if (!first) response[respLen++] = ',';
+            memcpy(&response[respLen], e->name, n);
+            respLen += n;
+            first = false;
         }
+        response[respLen] = '\0';  // requester parses a NUL-terminated list
     } else if (reqType == 0x02) {
         // Owner info request: version, name and owner info, newline separated.
         // This is where "fw_version: E:?" comes from — the requester reads the
@@ -3275,14 +3291,37 @@ bool processAnonRequest(MCPacket* pkt) {
     );
 
     if (plainLen < 5) {
+        LOG_RAW("ANON dec fail l=%d\n\r", pkt->payloadLen);
         return false;
     }
+
+    // Temporary diagnostics: show route type and the first bytes of the
+    // decrypted request so we can see where the type byte actually sits.
+    LOG_RAW("ANON rt=%d ts=%02X%02X%02X%02X t=%02X p5=%02X p6=%02X len=%d\n\r",
+            pkt->header.getRouteType(),
+            plain[0], plain[1], plain[2], plain[3],
+            plain[4], plain[5], plain[6], plainLen);
 
     // Anonymous info requests carry a control byte at offset 4 (the first byte
     // after the 4-byte timestamp): 0x01 regions, 0x02 owner info, 0x03 clock.
     // A login request starts with a printable password character there.
     if (plain[4] >= 0x01 && plain[4] <= 0x03) {
-        return handleAnonInfoRequest(pkt, ephemeralPub, timestamp, plain, plainLen);
+        // Info requests must not share the 5/min login bucket: a single KiekR
+        // poll asks for regions, owner and clock, and retries push it over the
+        // limit, after which every request was silently dropped.
+        if (!repeaterHelper.allowRequest()) {
+            LOG_RAW("INFO lim\n\r");
+            return false;
+        }
+        bool ok = handleAnonInfoRequest(pkt, ephemeralPub, timestamp, plain, plainLen);
+        LOG_RAW("INFO t=%d %s\n\r", plain[4], ok ? "queued" : "fail");
+        return ok;
+    }
+
+    if (!repeaterHelper.allowLogin()) {
+        statsRecordRateLimited();
+        LOG_RAW("LOGIN lim\n\r");
+        return false;
     }
 
     // Login request: extract the printable password starting at offset 4.
@@ -3369,14 +3408,10 @@ void processReceivedPacket(MCPacket* pkt) {
 
     // Handle ANON_REQ (login request)
     if (pkt->header.getPayloadType() == MC_PAYLOAD_ANON_REQ) {
+        LOG_RAW("ANON l=%d h=%02X me=%02X\n\r",
+                pkt->payloadLen, pkt->payload[0], nodeIdentity.getNodeHash());
         if (pkt->payloadLen >= 51 && pkt->payload[0] == nodeIdentity.getNodeHash()) {
-            // Rate limit login attempts
-            if (!repeaterHelper.allowLogin()) {
-                statsRecordRateLimited();  // Persistent stats
-                LOG(TAG_AUTH " Login lim\n\r");
-            } else {
-                processAnonRequest(pkt);
-            }
+            processAnonRequest(pkt);
         }
     }
     // Handle REQUEST (authenticated request)
