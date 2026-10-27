@@ -3206,12 +3206,33 @@ bool handleAnonInfoRequest(MCPacket* pkt, const uint8_t* ephemeralPub, uint32_t 
 
     MCPacket respPkt;
     respPkt.clear();
-    respPkt.header.set(MC_ROUTE_FLOOD, MC_PAYLOAD_RESPONSE, MC_PAYLOAD_VER_1);
-    respPkt.pathLen = 0;
     respPkt.payload[0] = ephemeralPub[0];          // destination hash
     respPkt.payload[1] = nodeIdentity.getNodeHash(); // source hash
     memcpy(&respPkt.payload[2], encrypted, encLen);
     respPkt.payloadLen = 2 + encLen;
+
+    // The request carries a return path at plain[5]: a pathLen byte (top two
+    // bits = hash size, low six = hop count) followed by the path hashes.
+    // KiekR sends its info requests DIRECT and waits for a DIRECT reply; a
+    // flooded reply never reaches its session handler, which is why regions
+    // and owner info stayed empty even though the request was received.
+    uint8_t reqPathLen = (plainLen > 5) ? plain[5] : 0;
+    uint16_t reqPathBytes = 0;
+    if (reqPathLen) {
+        uint8_t hs = ((reqPathLen >> 6) & 0x03) + 1;
+        uint8_t hops = reqPathLen & 0x3F;
+        reqPathBytes = (uint16_t)hs * hops;
+    }
+    if (reqPathLen && plainLen >= 6 + reqPathBytes && reqPathBytes <= MC_MAX_PATH_SIZE) {
+        respPkt.header.set(MC_ROUTE_DIRECT, MC_PAYLOAD_RESPONSE, MC_PAYLOAD_VER_1);
+        respPkt.pathLen = reqPathLen;
+        memcpy(respPkt.path, &plain[6], reqPathBytes);
+    } else {
+        // No return path supplied: flood, and declare the mesh's hash size so
+        // receivers parse the payload at the right offset.
+        respPkt.header.set(MC_ROUTE_FLOOD, MC_PAYLOAD_RESPONSE, MC_PAYLOAD_VER_1);
+        respPkt.pathLen = ((USERCFG_PATH_HASH_MODE & 0x03) << 6);
+    }
     txQueue.add(&respPkt);
 
     LOG(TAG_AUTH " Anon info 0x%02X -> %d B\n\r", reqType, respLen);
